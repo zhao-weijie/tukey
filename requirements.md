@@ -32,11 +32,11 @@ Programmatic test generation is powerful but dangerous without domain expert inv
 - US2.2 Broadcast configuration — "Apply to all" per field across models in a chatroom
 - US3.1 Data sovereignty — all data in ~/.tukey/, no cloud sync
 - US3.2 Chat import/export — per-chatroom JSON export/import via sidebar and REST endpoints
-- US3.4 Response metadata — tokens in/out, cost, duration, tok/s per response
+- US3.3 Experiment reproducibility — manifest endpoint, chat replay, full input recording
+- US3.4 Response metadata — tokens in/out, cost, duration, tok/s per response (toggle via ChartBar icon)
+- US4 Programmatic interface — TukeyClient SDK (httpx), provider/chatroom/chat/message CRUD, run_batch, manifest, replay
 
 ### Not started
-- US3.3 Experiment reproducibility
-- US4 Programmatic interface
 - US5.1–5.4 Experiment framework
 - US6 Synthesizer
 - SUS1–SUS5 Stretch stories

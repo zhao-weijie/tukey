@@ -147,6 +147,30 @@ async def send_message(chatroom_id: str, chat_id: str, body: MessageSend):
     return await room.send_message(chat_id, body.content)
 
 
+# --- Reproducibility ---
+
+@router.get("/chatrooms/{chatroom_id}/chats/{chat_id}/manifest")
+def get_manifest(chatroom_id: str, chat_id: str):
+    s, c = _get_deps()
+    if chatroom_id not in s.list_chatrooms():
+        raise HTTPException(404, "Chatroom not found")
+    if chat_id not in s.list_chats(chatroom_id):
+        raise HTTPException(404, "Chat not found")
+    room = ChatRoom(s, c, chatroom_id)
+    return room.get_manifest(chat_id)
+
+
+@router.post("/chatrooms/{chatroom_id}/chats/{chat_id}/replay", status_code=201)
+async def replay_chat(chatroom_id: str, chat_id: str):
+    s, c = _get_deps()
+    if chatroom_id not in s.list_chatrooms():
+        raise HTTPException(404, "Chatroom not found")
+    if chat_id not in s.list_chats(chatroom_id):
+        raise HTTPException(404, "Chat not found")
+    room = ChatRoom(s, c, chatroom_id)
+    return await room.replay_chat(chat_id)
+
+
 # --- Export / Import ---
 
 @router.get("/chatrooms/{chatroom_id}/export")

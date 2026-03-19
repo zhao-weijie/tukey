@@ -1,38 +1,6 @@
 """Tests for the chat module and server routes."""
 
-from pathlib import Path
-
-import pytest
-from fastapi.testclient import TestClient
-
-from tukey.storage import Storage
-from tukey.config import ConfigManager
 from tukey.chat.room import ChatRoom
-from tukey.server.app import create_app
-
-
-@pytest.fixture
-def storage(tmp_path: Path):
-    s = Storage(tmp_path / "data")
-    s.ensure_dirs()
-    return s
-
-
-@pytest.fixture
-def config(storage: Storage):
-    cm = ConfigManager(storage)
-    cm.add_provider("openai", "sk-test", base_url="http://localhost:9999")
-    return cm
-
-
-@pytest.fixture
-def app(tmp_path: Path):
-    return create_app(data_dir=str(tmp_path / "appdata"))
-
-
-@pytest.fixture
-def client(app):
-    return TestClient(app)
 
 
 def test_chatroom_create(storage, config):
@@ -245,3 +213,46 @@ def test_export_import_roundtrip(client):
     msgs = r.json()
     assert len(msgs) == 1
     assert msgs[0]["content"] == "export test msg"
+
+
+# --- Manifest tests ---
+
+def test_get_manifest(storage, config):
+    room = ChatRoom(storage, config)
+    providers = config.list_providers()
+    pid = providers[0]["id"]
+    room.create("Room", models=[{
+        "provider_id": pid,
+        "model_id": "gpt-4",
+        "display_name": "GPT-4",
+    }])
+    chat = room.create_chat("Manifest Chat")
+    # Write a message directly
+    storage.append_chat_message(room.chatroom_id, chat["id"], {
+        "id": "m1", "role": "user", "content": "hello",
+        "created_at": "2024-01-01T00:00:00Z",
+        "responses": [{"model_id": "gpt-4", "content": "hi", "tokens_in": 5, "tokens_out": 3, "cost": 0.001, "duration_ms": 200}],
+    })
+    manifest = room.get_manifest(chat["id"])
+    assert manifest["chatroom"]["name"] == "Room"
+    assert manifest["chat"]["id"] == chat["id"]
+    assert manifest["chat"]["models_snapshot"][0]["model_id"] == "gpt-4"
+    assert len(manifest["turns"]) == 1
+    assert manifest["turns"][0]["content"] == "hello"
+    assert manifest["turns"][0]["responses"][0]["tokens_in"] == 5
+    assert manifest["turns"][0]["responses"][0].get("error") is False
+
+
+def test_api_manifest(client):
+    cr, chat = _setup_chatroom_with_message(client, room_name="ManifestRoom", msg_content="manifest test")
+    r = client.get(f"/api/chat/chatrooms/{cr['id']}/chats/{chat['id']}/manifest")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["chatroom"]["name"] == "ManifestRoom"
+    assert len(data["turns"]) == 1
+    assert data["turns"][0]["content"] == "manifest test"
+
+
+def test_api_manifest_404(client):
+    r = client.get("/api/chat/chatrooms/nonexistent/chats/fake/manifest")
+    assert r.status_code == 404

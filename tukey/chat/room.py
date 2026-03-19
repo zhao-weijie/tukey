@@ -114,6 +114,60 @@ class ChatRoom:
     def get_messages(self, chat_id: str) -> list[dict[str, Any]]:
         return self.storage.read_chat_messages(self.chatroom_id, chat_id)
 
+    # --- Reproducibility ---
+
+    def get_manifest(self, chat_id: str) -> dict[str, Any]:
+        """Build a reproducibility manifest from existing chat data."""
+        chatroom_meta = self.get_meta()
+        chat_meta = self.get_chat_meta(chat_id)
+        messages = self.get_messages(chat_id)
+
+        user_turns = []
+        for msg in messages:
+            turn: dict[str, Any] = {"content": msg["content"]}
+            turn["responses"] = [
+                {
+                    "model_id": r["model_id"],
+                    "tokens_in": r.get("tokens_in"),
+                    "tokens_out": r.get("tokens_out"),
+                    "cost": r.get("cost"),
+                    "duration_ms": r.get("duration_ms"),
+                    "error": r.get("error", False),
+                }
+                for r in msg.get("responses", [])
+            ]
+            user_turns.append(turn)
+
+        return {
+            "chatroom": {
+                "name": chatroom_meta["name"],
+                "models": chatroom_meta.get("models", []),
+            },
+            "chat": {
+                "id": chat_id,
+                "name": chat_meta.get("name"),
+                "created_at": chat_meta.get("created_at"),
+                "models_snapshot": chat_meta.get("models_snapshot", []),
+                "providers_snapshot": chat_meta.get("providers_snapshot", {}),
+                "runtime": chat_meta.get("runtime", {}),
+            },
+            "turns": user_turns,
+        }
+
+    async def replay_chat(self, source_chat_id: str, name: str | None = None) -> dict[str, Any]:
+        """Replay a chat: create new chat, re-send all user turns, return new chat + messages."""
+        source_messages = self.get_messages(source_chat_id)
+        replay_name = name or "Replay"
+        new_chat = self.create_chat(replay_name)
+        new_chat_id = new_chat["id"]
+
+        all_turns = []
+        for msg in source_messages:
+            turn = await self.send_message(new_chat_id, msg["content"])
+            all_turns.append(turn)
+
+        return {"chat": new_chat, "turns": all_turns}
+
     # --- Export / Import ---
 
     @staticmethod
