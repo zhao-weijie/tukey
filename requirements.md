@@ -20,6 +20,27 @@ Tukey should never let users draw conclusions from insufficient evidence. Result
 ### Domain grounding over developer convenience
 Programmatic test generation is powerful but dangerous without domain expert involvement. The product should make it easy — and natural — for domain experts to participate in test case design, annotation, and criteria definition, not just review.
 
+## Implementation status
+
+### Complete
+- US1.1 API configuration and model selection — provider CRUD, model ID entry, model-aware config (capabilities endpoint)
+- US1.2 Configuration persistence — API keys and configs saved to ~/.tukey/
+- US1.3 Chat persistence — chatrooms persist models, configs, and conversation history
+- US1.4 Response comparison — parallel fan-out with streaming, side-by-side display
+- US1.5 Search — full-text search across chatrooms, chats, and messages via /api/search
+- US2.1 Independent configuration — system prompt, temperature, max_tokens, top_p, reasoning_effort (conditional on model capabilities)
+- US2.2 Broadcast configuration — "Apply to all" per field across models in a chatroom
+- US3.1 Data sovereignty — all data in ~/.tukey/, no cloud sync
+- US3.2 Chat import/export — per-chatroom JSON export/import via sidebar and REST endpoints
+- US3.4 Response metadata — tokens in/out, cost, duration, tok/s per response
+
+### Not started
+- US3.3 Experiment reproducibility
+- US4 Programmatic interface
+- US5.1–5.4 Experiment framework
+- US6 Synthesizer
+- SUS1–SUS5 Stretch stories
+
 ## Core user stories
 
 ### US1.1 API configuration and model selection

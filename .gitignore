@@ -18,3 +18,10 @@ ui/dist/
 
 # OS
 .DS_Store
+
+# Claude Code
+.claude/
+
+# Playwright CLI
+.playwright-cli/
+ui/.playwright-cli/

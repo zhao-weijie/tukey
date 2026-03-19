@@ -73,3 +73,24 @@ def update_provider(provider_id: str, body: ProviderUpdate):
 def delete_provider(provider_id: str):
     if not _cm().remove_provider(provider_id):
         raise HTTPException(404, "Provider not found")
+
+
+@router.post("/providers/{provider_id}/test")
+def test_provider(provider_id: str):
+    """Minimal litellm call to verify provider credentials."""
+    p = _cm().get_provider(provider_id)
+    if not p:
+        raise HTTPException(404, "Provider not found")
+    try:
+        import litellm
+
+        litellm.completion(
+            model="openai/gpt-4o-mini" if p.get("base_url") else "gpt-4o-mini",
+            messages=[{"role": "user", "content": "hi"}],
+            max_tokens=1,
+            api_key=p["api_key"],
+            api_base=p.get("base_url"),
+        )
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}

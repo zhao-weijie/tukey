@@ -24,8 +24,8 @@ def init(storage: Storage, config: ConfigManager) -> None:
     _config = config
 
 
-@router.websocket("/ws/chat/{room_id}")
-async def chat_stream(ws: WebSocket, room_id: str):
+@router.websocket("/ws/chat/{chatroom_id}/{chat_id}")
+async def chat_stream(ws: WebSocket, chatroom_id: str, chat_id: str):
     assert _storage and _config
     await ws.accept()
     try:
@@ -35,12 +35,12 @@ async def chat_stream(ws: WebSocket, room_id: str):
             if not content:
                 continue
 
-            meta = _storage.read_room_meta(room_id)
-            if not meta:
-                await ws.send_json({"error": "Room not found"})
+            chat_meta = _storage.read_chat_meta(chatroom_id, chat_id)
+            if not chat_meta:
+                await ws.send_json({"error": "Chat not found"})
                 continue
 
-            models = meta.get("models", [])
+            models = chat_meta.get("models_snapshot", [])
             turn_id = str(uuid.uuid4())
             now = datetime.now(timezone.utc).isoformat()
 
@@ -50,14 +50,13 @@ async def chat_stream(ws: WebSocket, room_id: str):
                 "content": content,
             })
 
-            # Collect final responses from each model for persistence
             final_responses: dict[str, dict] = {}
 
             async def stream_model(model_cfg: dict):
                 model_id = model_cfg["id"]
-                room = ChatRoom(_storage, _config, room_id)
+                room = ChatRoom(_storage, _config, chatroom_id)
                 try:
-                    async for chunk in room.stream_message(content, model_cfg):
+                    async for chunk in room.stream_message(chat_id, content, model_cfg):
                         msg = {
                             "type": "chunk",
                             "turn_id": turn_id,
@@ -99,7 +98,6 @@ async def chat_stream(ws: WebSocket, room_id: str):
                 return_exceptions=True,
             )
 
-            # Persist once from streamed results (no duplicate call)
             responses = [
                 final_responses.get(m["id"], {
                     "model_id": m["id"],
@@ -115,7 +113,7 @@ async def chat_stream(ws: WebSocket, room_id: str):
                 "created_at": now,
                 "responses": responses,
             }
-            _storage.append_message(room_id, turn)
+            _storage.append_chat_message(chatroom_id, chat_id, turn)
 
             await ws.send_json({
                 "type": "turn_complete",

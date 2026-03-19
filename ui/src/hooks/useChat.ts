@@ -4,10 +4,10 @@ import { useChatStore } from "@/stores/chatStore";
 export function useChat() {
   const wsRef = useRef<WebSocket | null>(null);
 
-  const connect = useCallback((roomId: string) => {
+  const connect = useCallback((chatroomId: string, chatId: string) => {
     if (wsRef.current) wsRef.current.close();
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${proto}//${window.location.host}/ws/chat/${roomId}`);
+    const ws = new WebSocket(`${proto}//${window.location.host}/ws/chat/${chatroomId}/${chatId}`);
 
     ws.onmessage = (e) => {
       const s = useChatStore.getState();

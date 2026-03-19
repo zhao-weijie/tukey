@@ -11,27 +11,45 @@ async function api<T>(path: string, opts?: RequestInit): Promise<T> {
 }
 
 export const apiClient = {
-  listRooms: () => api<any[]>("/api/chat/rooms"),
-  createRoom: (name: string, models: any[] = []) =>
-    api<any>("/api/chat/rooms", {
+  // Chatrooms
+  listChatrooms: () => api<any[]>("/api/chat/chatrooms"),
+  createChatroom: (name: string, models: any[] = []) =>
+    api<any>("/api/chat/chatrooms", {
       method: "POST",
       body: JSON.stringify({ name, models }),
     }),
-  getRoom: (id: string) => api<any>(`/api/chat/rooms/${id}`),
-  updateRoom: (id: string, data: any) =>
-    api<any>(`/api/chat/rooms/${id}`, {
+  getChatroom: (id: string) => api<any>(`/api/chat/chatrooms/${id}`),
+  updateChatroom: (id: string, data: any) =>
+    api<any>(`/api/chat/chatrooms/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
-  deleteRoom: (id: string) =>
-    api<void>(`/api/chat/rooms/${id}`, { method: "DELETE" }),
-  getMessages: (id: string) => api<any[]>(`/api/chat/rooms/${id}/messages`),
-  sendMessage: (roomId: string, content: string) =>
-    api<any>(`/api/chat/rooms/${roomId}/messages`, {
+  deleteChatroom: (id: string) =>
+    api<void>(`/api/chat/chatrooms/${id}`, { method: "DELETE" }),
+
+  // Chats
+  listChats: (chatroomId: string) =>
+    api<any[]>(`/api/chat/chatrooms/${chatroomId}/chats`),
+  createChat: (chatroomId: string, name?: string) =>
+    api<any>(`/api/chat/chatrooms/${chatroomId}/chats`, {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+  getChat: (chatroomId: string, chatId: string) =>
+    api<any>(`/api/chat/chatrooms/${chatroomId}/chats/${chatId}`),
+  deleteChat: (chatroomId: string, chatId: string) =>
+    api<void>(`/api/chat/chatrooms/${chatroomId}/chats/${chatId}`, { method: "DELETE" }),
+
+  // Messages
+  getMessages: (chatroomId: string, chatId: string) =>
+    api<any[]>(`/api/chat/chatrooms/${chatroomId}/chats/${chatId}/messages`),
+  sendMessage: (chatroomId: string, chatId: string, content: string) =>
+    api<any>(`/api/chat/chatrooms/${chatroomId}/chats/${chatId}/messages`, {
       method: "POST",
       body: JSON.stringify({ content }),
     }),
 
+  // Providers
   listProviders: () => api<any[]>("/api/config/providers"),
   createProvider: (data: any) =>
     api<any>("/api/config/providers", {
@@ -40,4 +58,30 @@ export const apiClient = {
     }),
   deleteProvider: (id: string) =>
     api<void>(`/api/config/providers/${id}`, { method: "DELETE" }),
+  testProvider: (id: string) =>
+    api<{ ok: boolean; error?: string }>(`/api/config/providers/${id}/test`, {
+      method: "POST",
+    }),
+
+  // Search
+  search: (q: string, limit = 50) =>
+    api<{ results: any[] }>(`/api/search?q=${encodeURIComponent(q)}&limit=${limit}`),
+
+  // Export / Import
+  exportChatroom: (id: string) =>
+    api<any>(`/api/chat/chatrooms/${id}/export`),
+  importChatroom: (data: any) =>
+    api<any>("/api/chat/chatrooms/import", {
+      method: "POST",
+      body: JSON.stringify({ data }),
+    }),
+
+  // Models
+  getModelCapabilities: (modelId: string) =>
+    api<{
+      supports_reasoning: boolean;
+      supports_vision: boolean;
+      max_tokens: number | null;
+      max_input_tokens: number | null;
+    }>(`/api/models/${encodeURIComponent(modelId)}/capabilities`),
 };

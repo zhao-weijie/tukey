@@ -1,6 +1,5 @@
 """Tests for the storage module."""
 
-import json
 from pathlib import Path
 
 from tukey.storage import Storage
@@ -49,21 +48,37 @@ def test_config_roundtrip(tmp_path: Path):
     assert s.read_config() == cfg
 
 
-def test_room_operations(tmp_path: Path):
+def test_chatroom_operations(tmp_path: Path):
     s = Storage(tmp_path / "data")
     s.ensure_dirs()
 
-    assert s.list_rooms() == []
+    assert s.list_chatrooms() == []
 
-    meta = {"id": "room1", "name": "Test Room"}
-    s.write_room_meta("room1", meta)
-    assert s.list_rooms() == ["room1"]
-    assert s.read_room_meta("room1") == meta
+    meta = {"id": "cr1", "name": "Test Chatroom", "models": []}
+    s.write_chatroom_meta("cr1", meta)
+    assert s.list_chatrooms() == ["cr1"]
+    assert s.read_chatroom_meta("cr1") == meta
 
-    s.append_message("room1", {"id": "m1", "content": "hi"})
-    s.append_message("room1", {"id": "m2", "content": "bye"})
-    msgs = s.read_messages("room1")
+    s.delete_chatroom("cr1")
+    assert s.list_chatrooms() == []
+
+
+def test_chat_operations(tmp_path: Path):
+    s = Storage(tmp_path / "data")
+    s.ensure_dirs()
+
+    s.write_chatroom_meta("cr1", {"id": "cr1", "name": "Room", "models": []})
+    assert s.list_chats("cr1") == []
+
+    chat_meta = {"id": "ch1", "name": "Chat 1", "models_snapshot": []}
+    s.write_chat_meta("cr1", "ch1", chat_meta)
+    assert s.list_chats("cr1") == ["ch1"]
+    assert s.read_chat_meta("cr1", "ch1") == chat_meta
+
+    s.append_chat_message("cr1", "ch1", {"id": "m1", "content": "hi"})
+    s.append_chat_message("cr1", "ch1", {"id": "m2", "content": "bye"})
+    msgs = s.read_chat_messages("cr1", "ch1")
     assert len(msgs) == 2
 
-    s.delete_room("room1")
-    assert s.list_rooms() == []
+    s.delete_chat("cr1", "ch1")
+    assert s.list_chats("cr1") == []

@@ -1,8 +1,9 @@
-"""FastAPI routes for chatroom CRUD and messaging."""
+"""FastAPI routes for chatroom and chat CRUD."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from tukey.chat.room import ChatRoom
@@ -26,78 +27,146 @@ def _get_deps() -> tuple[Storage, ConfigManager]:
     return _storage, _config
 
 
-class RoomCreate(BaseModel):
+class ChatroomCreate(BaseModel):
     name: str
     models: list[dict] = []
 
 
-class RoomUpdate(BaseModel):
+class ChatroomUpdate(BaseModel):
     name: str | None = None
     models: list[dict] | None = None
+
+
+class ChatCreate(BaseModel):
+    name: str | None = None
 
 
 class MessageSend(BaseModel):
     content: str
 
 
-@router.get("/rooms")
-def list_rooms():
+# --- Chatroom endpoints ---
+
+@router.get("/chatrooms")
+def list_chatrooms():
     s, _ = _get_deps()
-    rooms = []
-    for rid in s.list_rooms():
-        meta = s.read_room_meta(rid)
+    chatrooms = []
+    for cid in s.list_chatrooms():
+        meta = s.read_chatroom_meta(cid)
         if meta:
-            rooms.append(meta)
-    return rooms
+            chatrooms.append(meta)
+    return chatrooms
 
 
-@router.post("/rooms", status_code=201)
-def create_room(body: RoomCreate):
+@router.post("/chatrooms", status_code=201)
+def create_chatroom(body: ChatroomCreate):
     s, c = _get_deps()
     room = ChatRoom(s, c)
     return room.create(name=body.name, models=body.models)
 
 
-@router.get("/rooms/{room_id}")
-def get_room(room_id: str):
-    s, c = _get_deps()
-    meta = s.read_room_meta(room_id)
+@router.get("/chatrooms/{chatroom_id}")
+def get_chatroom(chatroom_id: str):
+    s, _ = _get_deps()
+    meta = s.read_chatroom_meta(chatroom_id)
     if not meta:
-        raise HTTPException(404, "Room not found")
+        raise HTTPException(404, "Chatroom not found")
     return meta
 
 
-@router.patch("/rooms/{room_id}")
-def update_room(room_id: str, body: RoomUpdate):
+@router.patch("/chatrooms/{chatroom_id}")
+def update_chatroom(chatroom_id: str, body: ChatroomUpdate):
     s, c = _get_deps()
-    meta = s.read_room_meta(room_id)
+    meta = s.read_chatroom_meta(chatroom_id)
     if not meta:
-        raise HTTPException(404, "Room not found")
-    room = ChatRoom(s, c, room_id)
+        raise HTTPException(404, "Chatroom not found")
+    room = ChatRoom(s, c, chatroom_id)
     updates = body.model_dump(exclude_none=True)
     return room.update_meta(updates)
 
 
-@router.delete("/rooms/{room_id}", status_code=204)
-def delete_room(room_id: str):
+@router.delete("/chatrooms/{chatroom_id}", status_code=204)
+def delete_chatroom(chatroom_id: str):
     s, _ = _get_deps()
-    if room_id not in s.list_rooms():
-        raise HTTPException(404, "Room not found")
-    s.delete_room(room_id)
+    if chatroom_id not in s.list_chatrooms():
+        raise HTTPException(404, "Chatroom not found")
+    s.delete_chatroom(chatroom_id)
 
 
-@router.get("/rooms/{room_id}/messages")
-def get_messages(room_id: str):
-    s, _ = _get_deps()
-    if room_id not in s.list_rooms():
-        raise HTTPException(404, "Room not found")
-    return s.read_messages(room_id)
+# --- Chat endpoints (nested under chatroom) ---
 
-
-@router.post("/rooms/{room_id}/messages")
-async def send_message(room_id: str, body: MessageSend):
+@router.get("/chatrooms/{chatroom_id}/chats")
+def list_chats(chatroom_id: str):
     s, c = _get_deps()
-    if room_id not in s.list_rooms():
-        raise HTTPException(404, "Room not found")
-    room = ChatRoom(s, c, room_id)
-    return await room.send_message(body.content)
+    if chatroom_id not in s.list_chatrooms():
+        raise HTTPException(404, "Chatroom not found")
+    room = ChatRoom(s, c, chatroom_id)
+    return room.list_chats()
+
+
+@router.post("/chatrooms/{chatroom_id}/chats", status_code=201)
+def create_chat(chatroom_id: str, body: ChatCreate):
+    s, c = _get_deps()
+    if chatroom_id not in s.list_chatrooms():
+        raise HTTPException(404, "Chatroom not found")
+    room = ChatRoom(s, c, chatroom_id)
+    return room.create_chat(name=body.name)
+
+
+@router.get("/chatrooms/{chatroom_id}/chats/{chat_id}")
+def get_chat(chatroom_id: str, chat_id: str):
+    s, _ = _get_deps()
+    meta = s.read_chat_meta(chatroom_id, chat_id)
+    if not meta:
+        raise HTTPException(404, "Chat not found")
+    return meta
+
+
+@router.delete("/chatrooms/{chatroom_id}/chats/{chat_id}", status_code=204)
+def delete_chat(chatroom_id: str, chat_id: str):
+    s, _ = _get_deps()
+    if chat_id not in s.list_chats(chatroom_id):
+        raise HTTPException(404, "Chat not found")
+    s.delete_chat(chatroom_id, chat_id)
+
+
+@router.get("/chatrooms/{chatroom_id}/chats/{chat_id}/messages")
+def get_messages(chatroom_id: str, chat_id: str):
+    s, _ = _get_deps()
+    if chat_id not in s.list_chats(chatroom_id):
+        raise HTTPException(404, "Chat not found")
+    return s.read_chat_messages(chatroom_id, chat_id)
+
+
+@router.post("/chatrooms/{chatroom_id}/chats/{chat_id}/messages")
+async def send_message(chatroom_id: str, chat_id: str, body: MessageSend):
+    s, c = _get_deps()
+    if chat_id not in s.list_chats(chatroom_id):
+        raise HTTPException(404, "Chat not found")
+    room = ChatRoom(s, c, chatroom_id)
+    return await room.send_message(chat_id, body.content)
+
+
+# --- Export / Import ---
+
+@router.get("/chatrooms/{chatroom_id}/export")
+def export_chatroom(chatroom_id: str):
+    s, _ = _get_deps()
+    if chatroom_id not in s.list_chatrooms():
+        raise HTTPException(404, "Chatroom not found")
+    data = ChatRoom.export_chatroom(s, chatroom_id)
+    cr_name = data["chatroom"]["name"].replace(" ", "_").lower()
+    return JSONResponse(
+        content=data,
+        headers={"Content-Disposition": f'attachment; filename="tukey-{cr_name}.json"'},
+    )
+
+
+class ChatroomImport(BaseModel):
+    data: dict
+
+
+@router.post("/chatrooms/import", status_code=201)
+def import_chatroom(body: ChatroomImport):
+    s, c = _get_deps()
+    return ChatRoom.import_chatroom(s, c, body.data)

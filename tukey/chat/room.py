@@ -1,23 +1,28 @@
-"""Chatroom logic: create rooms, manage models, fan-out prompts."""
+"""Chatroom logic: create chatrooms, manage models, fan-out prompts."""
 
 from __future__ import annotations
 
 import asyncio
+import sys
 import uuid
 from datetime import datetime, timezone
+from importlib.metadata import version as pkg_version
 from typing import Any, AsyncIterator
 
+import tukey
 from tukey.config import ConfigManager
 from tukey.providers.litellm_provider import LiteLLMProvider
-from tukey.providers.base import LLMResponse, StreamChunk
+from tukey.providers.base import StreamChunk
 from tukey.storage import Storage
 
 
 class ChatRoom:
-    def __init__(self, storage: Storage, config: ConfigManager, room_id: str | None = None):
+    def __init__(self, storage: Storage, config: ConfigManager, chatroom_id: str | None = None):
         self.storage = storage
         self.config = config
-        self.room_id = room_id or str(uuid.uuid4())
+        self.chatroom_id = chatroom_id or str(uuid.uuid4())
+
+    # --- Chatroom CRUD ---
 
     def create(self, name: str, models: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         now = datetime.now(timezone.utc).isoformat()
@@ -35,27 +40,148 @@ class ChatRoom:
                 "extra_params": m.get("extra_params", {}),
             })
         meta = {
-            "id": self.room_id,
+            "id": self.chatroom_id,
             "name": name,
             "created_at": now,
             "updated_at": now,
             "models": resolved_models,
         }
-        self.storage.write_room_meta(self.room_id, meta)
+        self.storage.write_chatroom_meta(self.chatroom_id, meta)
         return meta
 
     def get_meta(self) -> dict[str, Any]:
-        return self.storage.read_room_meta(self.room_id)
+        return self.storage.read_chatroom_meta(self.chatroom_id)
 
     def update_meta(self, updates: dict[str, Any]) -> dict[str, Any]:
         meta = self.get_meta()
         meta.update(updates)
         meta["updated_at"] = datetime.now(timezone.utc).isoformat()
-        self.storage.write_room_meta(self.room_id, meta)
+        self.storage.write_chatroom_meta(self.chatroom_id, meta)
         return meta
 
-    def get_messages(self) -> list[dict[str, Any]]:
-        return self.storage.read_messages(self.room_id)
+    # --- Chat CRUD ---
+
+    def create_chat(self, name: str | None = None) -> dict[str, Any]:
+        chatroom_meta = self.get_meta()
+        chat_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        existing = self.storage.list_chats(self.chatroom_id)
+        chat_name = name or f"Chat {len(existing) + 1}"
+        models = chatroom_meta.get("models", [])
+
+        # Collect unique provider snapshots (strip api_key)
+        providers_snapshot: dict[str, Any] = {}
+        for m in models:
+            pid = m.get("provider_id")
+            if pid and pid not in providers_snapshot:
+                prov = self.config.get_provider(pid)
+                if prov:
+                    providers_snapshot[pid] = {
+                        "id": prov["id"],
+                        "provider": prov.get("provider"),
+                        "base_url": prov.get("base_url"),
+                        "display_name": prov.get("display_name"),
+                    }
+
+        runtime = {
+            "tukey_version": tukey.__version__,
+            "litellm_version": pkg_version("litellm"),
+            "python_version": sys.version,
+        }
+
+        chat_meta = {
+            "id": chat_id,
+            "name": chat_name,
+            "models_snapshot": models,
+            "providers_snapshot": providers_snapshot,
+            "runtime": runtime,
+            "created_at": now,
+        }
+        self.storage.write_chat_meta(self.chatroom_id, chat_id, chat_meta)
+        return chat_meta
+
+    def get_chat_meta(self, chat_id: str) -> dict[str, Any]:
+        return self.storage.read_chat_meta(self.chatroom_id, chat_id)
+
+    def list_chats(self) -> list[dict[str, Any]]:
+        chats = []
+        for cid in self.storage.list_chats(self.chatroom_id):
+            meta = self.storage.read_chat_meta(self.chatroom_id, cid)
+            if meta:
+                chats.append(meta)
+        return chats
+
+    def get_messages(self, chat_id: str) -> list[dict[str, Any]]:
+        return self.storage.read_chat_messages(self.chatroom_id, chat_id)
+
+    # --- Export / Import ---
+
+    @staticmethod
+    def export_chatroom(storage: Storage, chatroom_id: str) -> dict[str, Any]:
+        meta = storage.read_chatroom_meta(chatroom_id)
+        if not meta:
+            raise ValueError(f"Chatroom {chatroom_id} not found")
+        chats_export = []
+        for cid in storage.list_chats(chatroom_id):
+            chat_meta = storage.read_chat_meta(chatroom_id, cid)
+            if not chat_meta:
+                continue
+            messages = storage.read_chat_messages(chatroom_id, cid)
+            chat_data = {
+                "name": chat_meta.get("name"),
+                "models_snapshot": chat_meta.get("models_snapshot", []),
+                "providers_snapshot": chat_meta.get("providers_snapshot", {}),
+                "runtime": chat_meta.get("runtime", {}),
+                "created_at": chat_meta.get("created_at"),
+                "messages": messages,
+            }
+            chats_export.append(chat_data)
+        return {
+            "tukey_export": {
+                "version": 1,
+                "exported_at": datetime.now(timezone.utc).isoformat(),
+                "tukey_version": tukey.__version__,
+            },
+            "chatroom": {
+                "name": meta["name"],
+                "models": meta.get("models", []),
+                "created_at": meta.get("created_at"),
+                "updated_at": meta.get("updated_at"),
+            },
+            "chats": chats_export,
+        }
+
+    @staticmethod
+    def import_chatroom(
+        storage: Storage, config: ConfigManager, data: dict[str, Any]
+    ) -> dict[str, Any]:
+        header = data.get("tukey_export")
+        if not header or header.get("version") != 1:
+            raise ValueError("Invalid or unsupported export format")
+        cr_data = data["chatroom"]
+        room = ChatRoom(storage, config)
+        room_meta = room.create(
+            name=cr_data["name"],
+            models=cr_data.get("models", []),
+        )
+        for chat_data in data.get("chats", []):
+            chat_id = str(uuid.uuid4())
+            now = datetime.now(timezone.utc).isoformat()
+            chat_meta = {
+                "id": chat_id,
+                "name": chat_data.get("name", "Imported Chat"),
+                "models_snapshot": chat_data.get("models_snapshot", []),
+                "providers_snapshot": chat_data.get("providers_snapshot", {}),
+                "runtime": chat_data.get("runtime", {}),
+                "created_at": chat_data.get("created_at", now),
+            }
+            storage.write_chat_meta(room.chatroom_id, chat_id, chat_meta)
+            for msg in chat_data.get("messages", []):
+                new_msg = {**msg, "id": str(uuid.uuid4())}
+                storage.append_chat_message(room.chatroom_id, chat_id, new_msg)
+        return room_meta
+
+    # --- Provider ---
 
     def _build_provider(self, provider_id: str) -> LiteLLMProvider:
         prov = self.config.get_provider(provider_id)
@@ -63,11 +189,11 @@ class ChatRoom:
             raise ValueError(f"Provider {provider_id} not found")
         return LiteLLMProvider(api_key=prov.get("api_key"), base_url=prov.get("base_url"))
 
-    def _build_messages_for_model(self, model_cfg: dict, user_content: str) -> list[dict]:
+    def _build_messages_for_model(self, chat_id: str, model_cfg: dict, user_content: str) -> list[dict]:
         msgs: list[dict] = []
         if model_cfg.get("system_prompt"):
             msgs.append({"role": "system", "content": model_cfg["system_prompt"]})
-        history = self.get_messages()
+        history = self.get_messages(chat_id)
         for turn in history:
             msgs.append({"role": "user", "content": turn["content"]})
             for resp in turn.get("responses", []):
@@ -76,15 +202,17 @@ class ChatRoom:
         msgs.append({"role": "user", "content": user_content})
         return msgs
 
-    async def send_message(self, content: str) -> dict[str, Any]:
-        meta = self.get_meta()
-        models = meta.get("models", [])
+    # --- Messaging (uses chat's models_snapshot) ---
+
+    async def send_message(self, chat_id: str, content: str) -> dict[str, Any]:
+        chat_meta = self.get_chat_meta(chat_id)
+        models = chat_meta.get("models_snapshot", [])
         turn_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
 
         async def call_model(model_cfg: dict) -> dict:
             provider = self._build_provider(model_cfg["provider_id"])
-            msgs = self._build_messages_for_model(model_cfg, content)
+            msgs = self._build_messages_for_model(chat_id, model_cfg, content)
             kwargs: dict[str, Any] = {}
             if model_cfg.get("temperature") is not None:
                 kwargs["temperature"] = model_cfg["temperature"]
@@ -126,14 +254,14 @@ class ChatRoom:
             "created_at": now,
             "responses": resolved,
         }
-        self.storage.append_message(self.room_id, turn)
+        self.storage.append_chat_message(self.chatroom_id, chat_id, turn)
         return turn
 
     async def stream_message(
-        self, content: str, model_cfg: dict
+        self, chat_id: str, content: str, model_cfg: dict
     ) -> AsyncIterator[StreamChunk]:
         provider = self._build_provider(model_cfg["provider_id"])
-        msgs = self._build_messages_for_model(model_cfg, content)
+        msgs = self._build_messages_for_model(chat_id, model_cfg, content)
         kwargs: dict[str, Any] = {}
         if model_cfg.get("temperature") is not None:
             kwargs["temperature"] = model_cfg["temperature"]

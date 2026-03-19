@@ -39,7 +39,7 @@ export interface Message {
   responses: ResponseMeta[];
 }
 
-export interface Room {
+export interface Chatroom {
   id: string;
   name: string;
   created_at: string;
@@ -47,19 +47,30 @@ export interface Room {
   models: ModelConfig[];
 }
 
+export interface Chat {
+  id: string;
+  name: string;
+  models_snapshot: ModelConfig[];
+  created_at: string;
+}
+
 interface StreamState {
   [modelId: string]: { content: string; done: boolean; metadata?: Partial<ResponseMeta> };
 }
 
 interface ChatState {
-  rooms: Room[];
-  activeRoomId: string | null;
+  chatrooms: Chatroom[];
+  activeChatroomId: string | null;
+  chats: Chat[];
+  activeChatId: string | null;
   messages: Message[];
   streaming: StreamState;
   providers: Provider[];
 
-  setRooms: (rooms: Room[]) => void;
-  setActiveRoom: (id: string | null) => void;
+  setChatrooms: (chatrooms: Chatroom[]) => void;
+  setActiveChatroom: (id: string | null) => void;
+  setChats: (chats: Chat[]) => void;
+  setActiveChat: (id: string | null) => void;
   setMessages: (msgs: Message[]) => void;
   addMessage: (msg: Message) => void;
   setProviders: (providers: Provider[]) => void;
@@ -70,14 +81,18 @@ interface ChatState {
 }
 
 export const useChatStore = create<ChatState>((set) => ({
-  rooms: [],
-  activeRoomId: null,
+  chatrooms: [],
+  activeChatroomId: null,
+  chats: [],
+  activeChatId: null,
   messages: [],
   streaming: {},
   providers: [],
 
-  setRooms: (rooms) => set({ rooms }),
-  setActiveRoom: (id) => set({ activeRoomId: id }),
+  setChatrooms: (chatrooms) => set({ chatrooms }),
+  setActiveChatroom: (id) => set({ activeChatroomId: id, chats: [], activeChatId: null, messages: [] }),
+  setChats: (chats) => set({ chats }),
+  setActiveChat: (id) => set({ activeChatId: id, messages: [] }),
   setMessages: (msgs) => set({ messages: msgs }),
   addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
   setProviders: (providers) => set({ providers }),

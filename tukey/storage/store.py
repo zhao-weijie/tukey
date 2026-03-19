@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -19,8 +20,11 @@ class Storage:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.chatrooms_dir.mkdir(exist_ok=True)
 
-    def room_dir(self, room_id: str) -> Path:
-        return self.chatrooms_dir / room_id
+    def chatroom_dir(self, chatroom_id: str) -> Path:
+        return self.chatrooms_dir / chatroom_id
+
+    def chat_dir(self, chatroom_id: str, chat_id: str) -> Path:
+        return self.chatroom_dir(chatroom_id) / "chats" / chat_id
 
     # --- JSON ---
 
@@ -66,29 +70,47 @@ class Storage:
         self.ensure_dirs()
         self.write_json(self.config_path, data)
 
-    # --- Room helpers ---
+    # --- Chatroom helpers ---
 
-    def list_rooms(self) -> list[str]:
+    def list_chatrooms(self) -> list[str]:
         if not self.chatrooms_dir.exists():
             return []
         return [
             d.name for d in sorted(self.chatrooms_dir.iterdir()) if d.is_dir()
         ]
 
-    def read_room_meta(self, room_id: str) -> dict[str, Any]:
-        return self.read_json(self.room_dir(room_id) / "meta.json")
+    def read_chatroom_meta(self, chatroom_id: str) -> dict[str, Any]:
+        return self.read_json(self.chatroom_dir(chatroom_id) / "meta.json")
 
-    def write_room_meta(self, room_id: str, meta: dict[str, Any]) -> None:
-        self.write_json(self.room_dir(room_id) / "meta.json", meta)
+    def write_chatroom_meta(self, chatroom_id: str, meta: dict[str, Any]) -> None:
+        self.write_json(self.chatroom_dir(chatroom_id) / "meta.json", meta)
 
-    def append_message(self, room_id: str, message: dict[str, Any]) -> None:
-        self.append_jsonl(self.room_dir(room_id) / "messages.jsonl", message)
+    def delete_chatroom(self, chatroom_id: str) -> None:
+        d = self.chatroom_dir(chatroom_id)
+        if d.exists():
+            shutil.rmtree(d)
 
-    def read_messages(self, room_id: str) -> list[dict[str, Any]]:
-        return self.read_jsonl(self.room_dir(room_id) / "messages.jsonl")
+    # --- Chat helpers ---
 
-    def delete_room(self, room_id: str) -> None:
-        import shutil
-        room = self.room_dir(room_id)
-        if room.exists():
-            shutil.rmtree(room)
+    def list_chats(self, chatroom_id: str) -> list[str]:
+        chats_dir = self.chatroom_dir(chatroom_id) / "chats"
+        if not chats_dir.exists():
+            return []
+        return [d.name for d in sorted(chats_dir.iterdir()) if d.is_dir()]
+
+    def read_chat_meta(self, chatroom_id: str, chat_id: str) -> dict[str, Any]:
+        return self.read_json(self.chat_dir(chatroom_id, chat_id) / "meta.json")
+
+    def write_chat_meta(self, chatroom_id: str, chat_id: str, meta: dict[str, Any]) -> None:
+        self.write_json(self.chat_dir(chatroom_id, chat_id) / "meta.json", meta)
+
+    def delete_chat(self, chatroom_id: str, chat_id: str) -> None:
+        d = self.chat_dir(chatroom_id, chat_id)
+        if d.exists():
+            shutil.rmtree(d)
+
+    def append_chat_message(self, chatroom_id: str, chat_id: str, message: dict[str, Any]) -> None:
+        self.append_jsonl(self.chat_dir(chatroom_id, chat_id) / "messages.jsonl", message)
+
+    def read_chat_messages(self, chatroom_id: str, chat_id: str) -> list[dict[str, Any]]:
+        return self.read_jsonl(self.chat_dir(chatroom_id, chat_id) / "messages.jsonl")

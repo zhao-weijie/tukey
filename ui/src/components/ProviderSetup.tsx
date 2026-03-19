@@ -46,11 +46,10 @@ export function ProviderSetup({ providers, onUpdate }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm" variant="ghost" className="w-full h-7 text-xs">
+      <DialogTrigger render={<Button size="sm" variant="ghost" className="w-full h-7 text-xs" />}>
           Providers ({providers.length})
-        </Button>
       </DialogTrigger>
+
       <DialogContent>
         <DialogHeader>
           <DialogTitle>API Providers</DialogTitle>
@@ -64,10 +63,13 @@ export function ProviderSetup({ providers, onUpdate }: Props) {
                   {p.base_url || "default"} &middot; {p.api_key.slice(0, 8)}...
                 </div>
               </div>
-              <button onClick={() => removeProvider(p.id)}
-                className="text-xs text-muted-foreground hover:text-destructive px-2">
-                Remove
-              </button>
+              <div className="flex items-center gap-1">
+                <TestButton providerId={p.id} />
+                <button onClick={() => removeProvider(p.id)}
+                  className="text-xs text-muted-foreground hover:text-destructive px-2">
+                  Remove
+                </button>
+              </div>
             </div>
           ))}
 
@@ -99,5 +101,38 @@ export function ProviderSetup({ providers, onUpdate }: Props) {
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function TestButton({ providerId }: { providerId: string }) {
+  const [status, setStatus] = useState<"idle" | "testing" | "ok" | "fail">("idle");
+  const [error, setError] = useState("");
+
+  const test = async () => {
+    setStatus("testing");
+    setError("");
+    try {
+      const res = await apiClient.testProvider(providerId);
+      if (res.ok) {
+        setStatus("ok");
+      } else {
+        setStatus("fail");
+        setError(res.error || "Unknown error");
+      }
+    } catch (e: any) {
+      setStatus("fail");
+      setError(e.message);
+    }
+  };
+
+  return (
+    <button onClick={test} disabled={status === "testing"}
+      className="text-xs px-2 text-muted-foreground hover:text-foreground"
+      title={error || undefined}>
+      {status === "idle" && "Test"}
+      {status === "testing" && "..."}
+      {status === "ok" && "\u2713 OK"}
+      {status === "fail" && "\u2717 Fail"}
+    </button>
   );
 }
