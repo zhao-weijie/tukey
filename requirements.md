@@ -38,13 +38,15 @@ Programmatic test generation is powerful but dangerous without domain expert inv
 - UX: Responsive sidebar — overlay drawer on small screens (<768px) with backdrop, auto-close on selection
 - UX: Delete confirmations — browser confirm dialog before deleting chatrooms or chats
 - UX: Loading skeleton — pulsing placeholder cards shown between send and first streaming chunk
+- SUS6 Copy responses — copy full response (button in card header) and copy individual fenced code blocks (hover button)
+- SUS7 Improve readability — LLM responses rendered as markdown (headings, lists, tables, code blocks with syntax highlighting); user message newlines preserved via whitespace-pre-wrap
 
 ### In progress
 - US5.1–5.4 Experiment framework — backend complete (experiment CRUD, test cases, run execution with multi-turn + concurrency, annotations, summary, REST API, SDK). Frontend UI not yet built.
 
 ### Not started
 - US6 Synthesizer
-- SUS1–SUS5 Stretch stories
+- SUS1–SUS5 Stretch stories (except SUS6, SUS7)
 
 ## Core user stories
 
