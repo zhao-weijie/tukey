@@ -1,5 +1,5 @@
 [project]
-name = "tukey"
+name = "tukey-llm"
 dynamic = ["version"]
 description = "Compare LLM responses side-by-side with local persistence"
 requires-python = ">=3.11"
