@@ -21,10 +21,12 @@ export function Sidebar() {
   const [newName, setNewName] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const importRef = useRef<HTMLInputElement>(null);
+  const [dataDir, setDataDir] = useState("");
 
   useEffect(() => {
     apiClient.listChatrooms().then(setChatrooms).catch(console.error);
     apiClient.listProviders().then(setProviders).catch(console.error);
+    apiClient.getHealth().then((h) => setDataDir(h.data_dir)).catch(console.error);
   }, [setChatrooms, setProviders]);
 
   // Load chats when a chatroom is expanded or selected
@@ -173,6 +175,11 @@ export function Sidebar() {
       <Separator />
       <div className="p-2">
         <ProviderSetup providers={providers} onUpdate={setProviders} />
+        {dataDir && (
+          <p className="text-[10px] text-muted-foreground mt-1 px-1 truncate" title={dataDir}>
+            {dataDir}
+          </p>
+        )}
       </div>
     </div>
   );

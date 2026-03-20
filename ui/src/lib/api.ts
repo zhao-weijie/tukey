@@ -84,4 +84,9 @@ export const apiClient = {
       max_tokens: number | null;
       max_input_tokens: number | null;
     }>(`/api/models/${encodeURIComponent(modelId)}/capabilities`),
+  getAvailableModels: (providerId: string) =>
+    api<{ id: string; name: string }[]>(`/api/models/providers/${providerId}/available`),
+
+  // Health
+  getHealth: () => api<{ status: string; data_dir: string }>("/api/health"),
 };

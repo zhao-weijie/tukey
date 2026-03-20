@@ -56,7 +56,7 @@ def create_app(data_dir: str | None = None) -> FastAPI:
 
     @app.get("/api/health")
     def health():
-        return {"status": "ok"}
+        return {"status": "ok", "data_dir": str(storage.data_dir)}
 
     # Serve built UI
     if UI_DIST.exists():

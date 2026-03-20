@@ -65,7 +65,9 @@ def test_list_chats(storage, config):
 def test_health(client):
     r = client.get("/api/health")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok"}
+    data = r.json()
+    assert data["status"] == "ok"
+    assert "data_dir" in data
 
 
 def test_api_create_and_list_chatrooms(client):

@@ -27,6 +27,8 @@ export function ModelConfig({ models, providers, onUpdate }: Props) {
   const [newProviderId, setNewProviderId] = useState(providers[0]?.id || "");
   const [newDisplayName, setNewDisplayName] = useState("");
   const [caps, setCaps] = useState<Record<string, Caps>>({});
+  const [availableModels, setAvailableModels] = useState<{ id: string; name: string }[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const fetchCaps = useCallback(async (modelId: string) => {
     if (caps[modelId]) return;
@@ -44,6 +46,12 @@ export function ModelConfig({ models, providers, onUpdate }: Props) {
   useEffect(() => {
     models.forEach((m) => fetchCaps(m.model_id));
   }, [models.map((m) => m.model_id).join(",")]);
+
+  // Fetch available models when provider changes
+  useEffect(() => {
+    if (!newProviderId) { setAvailableModels([]); return; }
+    apiClient.getAvailableModels(newProviderId).then(setAvailableModels).catch(() => setAvailableModels([]));
+  }, [newProviderId]);
 
   const addModel = () => {
     if (!newModelId.trim() || !newProviderId) return;
@@ -113,10 +121,27 @@ export function ModelConfig({ models, providers, onUpdate }: Props) {
               ))}
             </select>
           </div>
-          <div>
+          <div className="relative">
             <Label className="text-xs">Model ID</Label>
-            <Input value={newModelId} onChange={(e) => setNewModelId(e.target.value)}
+            <Input value={newModelId}
+              onChange={(e) => { setNewModelId(e.target.value); setShowSuggestions(true); }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
               placeholder="openai/gpt-5.2" className="h-8 text-sm mt-1" />
+            {showSuggestions && availableModels.length > 0 && (
+              <div className="absolute z-10 w-full mt-0.5 max-h-40 overflow-y-auto border border-input rounded-md bg-background shadow-md">
+                {availableModels
+                  .filter((m) => !newModelId || m.id.toLowerCase().includes(newModelId.toLowerCase()))
+                  .slice(0, 20)
+                  .map((m) => (
+                    <button key={m.id} type="button"
+                      className="w-full text-left px-2 py-1 text-xs hover:bg-accent truncate"
+                      onMouseDown={(e) => { e.preventDefault(); setNewModelId(m.id); setShowSuggestions(false); }}>
+                      {m.id}
+                    </button>
+                  ))}
+              </div>
+            )}
             <p className="text-[10px] text-muted-foreground mt-1">
               Use openai/ prefix for gateway models (e.g. openai/claude-4.6-sonnet, openai/gemini-2.5-pro)
             </p>
