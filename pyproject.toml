@@ -1,8 +1,15 @@
 [project]
 name = "tukey"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Compare LLM responses side-by-side with local persistence"
 requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: FastAPI",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
@@ -19,12 +26,22 @@ dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
 [project.scripts]
 tukey = "tukey.__main__:main"
 
+[project.urls]
+Homepage = "https://github.com/zhaow/tukey"
+Repository = "https://github.com/zhaow/tukey"
+
 [build-system]
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.dynamic]
+version = {attr = "tukey.__version__"}
+
 [tool.setuptools.packages.find]
 include = ["tukey*"]
+
+[tool.setuptools.package-data]
+tukey = ["static/**/*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
