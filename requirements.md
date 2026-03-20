@@ -127,3 +127,9 @@ As a team, we want access to domain-specific criteria templates (e.g. healthcare
 
 ### SUS5 Statistical significance surfacing
 As a user, I want the product to surface the number of discordant pairs between models and flag when sample sizes are insufficient for statistical conclusions — so that I am not misled by differences that could be noise (e.g. 8/10 vs 6/10 pass rates with only 4 disagreements).
+
+### SUS6 Copying individual responses
+As a user, I want a frictionless way to copy responses OR code within fenced blocks to clipboard with a single interaction so that I can use it in a downstream application.
+
+### SUS7 Improve readability
+As a user of the webapp, I want my inputs AND model responses to be formatted and rendered in their intended format so that I can read them more quickly. e.g. newlines in my inputs are currently lost, markdown is not rendered. 

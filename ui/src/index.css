@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
+@import "highlight.js/styles/github-dark-dimmed.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -134,4 +135,81 @@
 }
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+/* highlight.js: override background to use theme-aware muted color */
+.markdown-content .hljs {
+  background: transparent;
+}
+
+/* Markdown prose styles */
+.markdown-content h1 { font-size: 1.5em; font-weight: 700; margin: 0.8em 0 0.4em; }
+.markdown-content h2 { font-size: 1.3em; font-weight: 600; margin: 0.7em 0 0.35em; }
+.markdown-content h3 { font-size: 1.15em; font-weight: 600; margin: 0.6em 0 0.3em; }
+.markdown-content h4 { font-size: 1.05em; font-weight: 600; margin: 0.5em 0 0.25em; }
+
+.markdown-content p { margin: 0.5em 0; }
+.markdown-content p:first-child { margin-top: 0; }
+.markdown-content p:last-child { margin-bottom: 0; }
+
+.markdown-content ul { list-style: disc; padding-left: 1.5em; margin: 0.5em 0; }
+.markdown-content ol { list-style: decimal; padding-left: 1.5em; margin: 0.5em 0; }
+.markdown-content li { margin: 0.2em 0; }
+.markdown-content li > ul,
+.markdown-content li > ol { margin: 0.1em 0; }
+
+.markdown-content blockquote {
+  border-left: 3px solid var(--border);
+  padding: 0.25em 0.75em;
+  margin: 0.5em 0;
+  background: var(--muted);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.markdown-content pre {
+  background: var(--muted);
+  border-radius: var(--radius-sm);
+  padding: 0.75em 1em;
+  margin: 0.5em 0;
+  overflow-x: auto;
+  font-size: 0.875em;
+}
+
+.markdown-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.5em 0;
+  font-size: 0.875em;
+}
+.markdown-content th,
+.markdown-content td {
+  border: 1px solid var(--border);
+  padding: 0.4em 0.75em;
+  text-align: left;
+}
+.markdown-content th {
+  background: var(--muted);
+  font-weight: 600;
+}
+.markdown-content tr:nth-child(even) {
+  background: color-mix(in oklch, var(--muted) 40%, transparent);
+}
+
+.markdown-content a {
+  color: var(--chart-1);
+  text-decoration: underline;
+}
+.markdown-content a:hover {
+  opacity: 0.8;
+}
+
+.markdown-content hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1em 0;
+}
+
+.markdown-content img {
+  max-width: 100%;
+  border-radius: var(--radius-sm);
 }

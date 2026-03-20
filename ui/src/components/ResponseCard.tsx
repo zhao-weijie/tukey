@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { ChartBar, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { Badge } from "@/components/ui/badge";
+import { CopyButton } from "./CopyButton";
+import { MarkdownContent } from "./MarkdownContent";
 import type { ResponseMeta } from "@/stores/chatStore";
 
 interface Props {
@@ -40,7 +42,12 @@ export function ResponseCard({
   return (
     <div className="min-w-0 border border-border rounded-lg flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30 min-w-0 overflow-hidden">
-        <span className="font-medium text-sm truncate" title={modelName}>{modelName}</span>
+        <div className="flex items-center gap-1 min-w-0">
+          <span className="font-medium text-sm truncate" title={modelName}>{modelName}</span>
+          {!streaming && content && !error && (
+            <CopyButton text={content} size={14} />
+          )}
+        </div>
         {streaming && (
           <Badge variant="secondary" className="text-xs animate-pulse">
             {streamingTotal && streamingTotal > 1
@@ -73,9 +80,7 @@ export function ResponseCard({
             )}
           </div>
         ) : (
-          <pre className="whitespace-pre-wrap text-sm font-sans">
-            {content || (streaming ? "" : "No response")}
-          </pre>
+          <MarkdownContent content={content || (streaming ? "" : "No response")} />
         )}
       </div>
       {/* Cycling UI */}

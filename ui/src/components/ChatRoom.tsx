@@ -245,7 +245,7 @@ export function ChatRoom() {
                       <ArrowsClockwise size={14} />
                     </button>
                   </div>
-                  <div className="text-sm bg-muted/30 rounded-md p-3">{msg.content}</div>
+                  <div className="text-sm bg-muted/30 rounded-md p-3 whitespace-pre-wrap">{msg.content}</div>
                   {/* Inline regenerate form */}
                   {regenTurnId === msg.id && (
                     <div className="flex items-center gap-2 pl-1">
