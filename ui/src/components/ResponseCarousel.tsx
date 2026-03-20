@@ -17,15 +17,17 @@ export function ResponseCarousel({ children }: Props) {
 
   const childCount = Children.count(children);
   const visibleCount = Math.max(1, Math.floor(containerWidth / MIN_CARD_WIDTH));
-  const cardWidth = visibleCount >= childCount
-    ? undefined // let them flex naturally when all fit
-    : (containerWidth - GAP * (visibleCount - 1)) / visibleCount;
+  const effectiveVisible = Math.min(visibleCount, childCount);
+  const cardWidth = containerWidth > 0
+    ? (containerWidth - GAP * (effectiveVisible - 1)) / effectiveVisible
+    : MIN_CARD_WIDTH;
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
-      setContainerWidth(entry.contentRect.width);
+      const w = Math.round(entry.contentRect.width);
+      setContainerWidth(prev => Math.abs(prev - w) > 1 ? w : prev);
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -47,7 +49,7 @@ export function ResponseCarousel({ children }: Props) {
   };
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative min-w-0 overflow-hidden">
       <div
         ref={scrollRef}
         onScroll={updateScrollButtons}
@@ -56,7 +58,7 @@ export function ResponseCarousel({ children }: Props) {
       >
         {Children.map(children, (child) => (
           <div
-            style={cardWidth ? { width: cardWidth, flexShrink: 0, scrollSnapAlign: "start" } : { flex: 1, minWidth: 0, scrollSnapAlign: "start" }}
+            style={{ width: cardWidth, flexShrink: 0, scrollSnapAlign: "start" }}
           >
             {child}
           </div>

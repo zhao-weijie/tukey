@@ -43,11 +43,17 @@ class LiteLLMProvider:
         self,
         api_key: str | None = None,
         base_url: str | None = None,
+        provider_type: str | None = None,
     ):
         self.api_key = api_key
         self.base_url = base_url
+        self.provider_type = provider_type
 
     def _build_kwargs(self, model: str, messages: list[dict], **extra: Any) -> dict:
+        # Always prefix with provider type so litellm routes correctly.
+        # For custom gateways, set provider_type=None to pass the model name raw.
+        if self.provider_type and not model.startswith(f"{self.provider_type}/"):
+            model = f"{self.provider_type}/{model}"
         _ensure_model_registered(model)
         kwargs: dict[str, Any] = {"model": model, "messages": messages}
         if self.api_key:

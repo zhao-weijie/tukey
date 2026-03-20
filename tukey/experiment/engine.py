@@ -313,7 +313,11 @@ class Experiment:
         prov = self.config.get_provider(provider_id)
         if not prov:
             raise ValueError(f"Provider {provider_id} not found")
-        return LiteLLMProvider(api_key=prov.get("api_key"), base_url=prov.get("base_url"))
+        return LiteLLMProvider(
+            api_key=prov.get("api_key"),
+            base_url=prov.get("base_url"),
+            provider_type=prov.get("provider"),
+        )
 
     @staticmethod
     def _merge_config(model_cfg: dict, overrides: dict) -> dict:

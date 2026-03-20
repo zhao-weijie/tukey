@@ -244,7 +244,11 @@ class ChatRoom:
         prov = self.config.get_provider(provider_id)
         if not prov:
             raise ValueError(f"Provider {provider_id} not found")
-        return LiteLLMProvider(api_key=prov.get("api_key"), base_url=prov.get("base_url"))
+        return LiteLLMProvider(
+            api_key=prov.get("api_key"),
+            base_url=prov.get("base_url"),
+            provider_type=prov.get("provider"),
+        )
 
     def _build_messages_for_model(self, chat_id: str, model_cfg: dict, user_content: str) -> list[dict]:
         msgs: list[dict] = []
