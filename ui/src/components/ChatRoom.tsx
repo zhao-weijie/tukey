@@ -9,9 +9,20 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { CaretDown } from "@phosphor-icons/react";
+import { CaretDown, CaretUp, ArrowsClockwise } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
-import type { Chatroom, Chat, ModelConfig as MC } from "@/stores/chatStore";
+import type { Chatroom, Chat, ModelConfig as MC, ResponseMeta } from "@/stores/chatStore";
+
+function groupResponsesByModel(responses: ResponseMeta[]): Record<string, ResponseMeta[]> {
+  const groups: Record<string, ResponseMeta[]> = {};
+  for (const r of responses) {
+    (groups[r.model_id] ||= []).push(r);
+  }
+  for (const key of Object.keys(groups)) {
+    groups[key].sort((a, b) => (a.response_index ?? 0) - (b.response_index ?? 0));
+  }
+  return groups;
+}
 
 export function ChatRoom() {
   const {
@@ -19,7 +30,7 @@ export function ChatRoom() {
     messages, setMessages, streaming,
     providers, setProviders,
   } = useChatStore();
-  const { connect, disconnect, send: wsSend } = useChat();
+  const { connect, disconnect, send: wsSend, regenerate: wsRegenerate } = useChat();
   const [chatroom, setChatroom] = useState<Chatroom | null>(null);
   const [chat, setChat] = useState<Chat | null>(null);
   const [input, setInput] = useState("");
@@ -28,6 +39,13 @@ export function ChatRoom() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const prevStreaming = useRef(false);
+  const [completionCount, setCompletionCount] = useState(1);
+  const [waitingForStream, setWaitingForStream] = useState(false);
+  // Cycling state: { [turnId]: { [modelId]: activeIndex } }
+  const [cyclingState, setCyclingState] = useState<Record<string, Record<string, number>>>({});
+  // Regenerate UI state: which turn_id has the inline form open
+  const [regenTurnId, setRegenTurnId] = useState<string | null>(null);
+  const [regenCount, setRegenCount] = useState(1);
 
   // Load chatroom meta when chatroom changes
   useEffect(() => {
@@ -58,6 +76,7 @@ export function ChatRoom() {
   const isStreaming = streamEntries.length > 0 && streamEntries.some(s => !s.done);
 
   useEffect(() => {
+    if (streamEntries.length > 0) setWaitingForStream(false);
     if (prevStreaming.current && !isStreaming && streamEntries.length > 0) {
       setShowScrollBtn(true);
     }
@@ -122,13 +141,30 @@ export function ChatRoom() {
   const displayModels = chat?.models_snapshot || chatroom?.models || [];
   const modelMap = Object.fromEntries(displayModels.map((m) => [m.id, m]));
 
+  // Collect currently-viewed response indices for multi-turn context
+  function getResponseIndices(): Record<string, number> {
+    const indices: Record<string, number> = {};
+    for (const msg of messages) {
+      const turnCycling = cyclingState[msg.id];
+      if (turnCycling) {
+        // For each model in this turn, record the viewed index
+        for (const [, idx] of Object.entries(turnCycling)) {
+          indices[msg.id] = idx; // last model's idx wins per turn — we use turn-level index
+        }
+      }
+    }
+    return indices;
+  }
+
   const send = async () => {
     const text = input.trim();
     if (!text || sending || !activeChatroomId || !activeChatId) return;
     setInput("");
     setSending(true);
+    setWaitingForStream(true);
     try {
-      const sent = wsSend(text);
+      const responseIndices = getResponseIndices();
+      const sent = wsSend(text, completionCount, responseIndices);
       if (!sent) {
         const turn = await apiClient.sendMessage(activeChatroomId, activeChatId, text);
         useChatStore.getState().addMessage(turn);
@@ -137,6 +173,36 @@ export function ChatRoom() {
       setSending(false);
     }
   };
+
+  function handleCyclingChange(turnId: string, modelId: string, index: number) {
+    setCyclingState((prev) => ({
+      ...prev,
+      [turnId]: { ...prev[turnId], [modelId]: index },
+    }));
+  }
+
+  function handleRegenerate(turnId: string) {
+    wsRegenerate(turnId, regenCount);
+    setRegenTurnId(null);
+    setRegenCount(1);
+  }
+
+  // Group streaming entries by modelId for display
+  function groupStreamByModel(): Record<string, { content: string; total: number }> {
+    const groups: Record<string, { content: string; total: number; minIdx: number }> = {};
+    for (const entry of Object.values(streaming)) {
+      const mid = entry.modelId;
+      if (!groups[mid]) {
+        groups[mid] = { content: entry.content, total: 1, minIdx: entry.responseIndex };
+      } else {
+        groups[mid].total++;
+        if (entry.responseIndex < groups[mid].minIdx) {
+          groups[mid] = { ...groups[mid], content: entry.content, minIdx: entry.responseIndex };
+        }
+      }
+    }
+    return groups;
+  }
 
   return (
     <div className="flex-1 flex flex-col h-full min-w-0">
@@ -163,35 +229,94 @@ export function ChatRoom() {
       <div className="flex flex-1 overflow-hidden">
         <ScrollArea className="flex-1 min-w-0 p-4" onScrollCapture={handleScroll}>
           <div className="space-y-6">
-            {messages.map((msg) => (
-              <div key={msg.id} className="space-y-2">
-                <div className="text-sm font-medium">You</div>
-                <div className="text-sm bg-muted/30 rounded-md p-3">{msg.content}</div>
+            {messages.map((msg) => {
+              const grouped = groupResponsesByModel(msg.responses);
+              const modelIds = Object.keys(grouped);
+              return (
+                <div key={msg.id} className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm font-medium">You</div>
+                    {/* Regenerate button */}
+                    <button
+                      onClick={() => setRegenTurnId(regenTurnId === msg.id ? null : msg.id)}
+                      className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                      title="Generate more completions"
+                    >
+                      <ArrowsClockwise size={14} />
+                    </button>
+                  </div>
+                  <div className="text-sm bg-muted/30 rounded-md p-3">{msg.content}</div>
+                  {/* Inline regenerate form */}
+                  {regenTurnId === msg.id && (
+                    <div className="flex items-center gap-2 pl-1">
+                      <span className="text-xs text-muted-foreground">Add</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={9}
+                        value={regenCount}
+                        onChange={(e) => setRegenCount(Math.min(9, Math.max(1, Number(e.target.value) || 1)))}
+                        className="w-12 h-6 text-xs text-center border border-border rounded bg-background"
+                      />
+                      <span className="text-xs text-muted-foreground">more</span>
+                      <Button
+                        size="sm"
+                        className="h-6 text-xs px-2"
+                        onClick={() => handleRegenerate(msg.id)}
+                      >
+                        Go
+                      </Button>
+                    </div>
+                  )}
+                  <ResponseCarousel>
+                    {modelIds.map((mid) => (
+                      <ResponseCard
+                        key={mid}
+                        modelName={modelMap[mid]?.display_name || mid}
+                        responses={grouped[mid]}
+                        activeIndex={cyclingState[msg.id]?.[mid] ?? 0}
+                        onIndexChange={(idx) => handleCyclingChange(msg.id, mid, idx)}
+                      />
+                    ))}
+                  </ResponseCarousel>
+                </div>
+              );
+            })}
+
+            {waitingForStream && Object.keys(streaming).length === 0 && (
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-muted-foreground">Waiting for responses...</div>
                 <ResponseCarousel>
-                  {msg.responses.map((r) => (
-                    <ResponseCard
-                      key={r.model_id}
-                      modelName={modelMap[r.model_id]?.display_name || r.model_id}
-                      content={r.content}
-                      metadata={r}
-                      error={r.error}
-                    />
+                  {displayModels.map((m) => (
+                    <div key={m.id} className="min-w-0 border border-border rounded-lg flex flex-col h-32 animate-pulse">
+                      <div className="flex items-center px-3 py-2 border-b border-border bg-muted/30">
+                        <div className="h-4 w-24 bg-muted rounded" />
+                      </div>
+                      <div className="flex-1 p-3 space-y-2">
+                        <div className="h-3 w-full bg-muted/50 rounded" />
+                        <div className="h-3 w-3/4 bg-muted/50 rounded" />
+                        <div className="h-3 w-1/2 bg-muted/50 rounded" />
+                      </div>
+                    </div>
                   ))}
                 </ResponseCarousel>
               </div>
-            ))}
+            )}
 
             {Object.keys(streaming).length > 0 && (
               <div className="space-y-2">
                 <div className="text-sm font-medium">You</div>
                 <ResponseCarousel>
-                  {Object.entries(streaming).map(([mid, s]) => (
+                  {Object.entries(groupStreamByModel()).map(([mid, { content, total }]) => (
                     <ResponseCard
                       key={mid}
                       modelName={modelMap[mid]?.display_name || mid}
-                      content={s.content}
-                      streaming={!s.done}
-                      metadata={s.done ? s.metadata : undefined}
+                      responses={[]}
+                      activeIndex={0}
+                      onIndexChange={() => {}}
+                      streaming
+                      streamingContent={content}
+                      streamingTotal={total}
                     />
                   ))}
                 </ResponseCarousel>
@@ -233,7 +358,7 @@ export function ChatRoom() {
         </div>
       )}
       <Separator />
-      <div className="p-3 flex gap-2">
+      <div className="p-3 flex gap-2 items-end">
         <Textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -244,8 +369,29 @@ export function ChatRoom() {
           rows={2}
           className="resize-none text-sm"
         />
+        <div className="flex flex-col items-center gap-1">
+          <div className="flex flex-col items-center">
+            <button
+              onClick={() => setCompletionCount((c) => Math.min(9, c + 1))}
+              className="p-0 leading-none text-muted-foreground hover:text-foreground"
+              aria-label="Increase completions"
+            >
+              <CaretUp size={14} />
+            </button>
+            <span className="text-xs tabular-nums leading-tight" title="Completions per model per turn">
+              &times;{completionCount}
+            </span>
+            <button
+              onClick={() => setCompletionCount((c) => Math.max(1, c - 1))}
+              className="p-0 leading-none text-muted-foreground hover:text-foreground"
+              aria-label="Decrease completions"
+            >
+              <CaretDown size={14} />
+            </button>
+          </div>
+        </div>
         <Button onClick={send} disabled={sending || !input.trim()} className="self-end">
-          {sending ? "..." : "Send"}
+          {sending ? "..." : <>Send <kbd className="ml-1 text-[10px] opacity-50">&#x21B5;</kbd></>}
         </Button>
       </div>
     </div>

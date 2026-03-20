@@ -1,14 +1,16 @@
 import { useState } from "react";
-import { ChartBar } from "@phosphor-icons/react";
+import { ChartBar, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { Badge } from "@/components/ui/badge";
 import type { ResponseMeta } from "@/stores/chatStore";
 
 interface Props {
   modelName: string;
-  content: string;
-  metadata?: Partial<ResponseMeta>;
+  responses: ResponseMeta[];
+  activeIndex: number;
+  onIndexChange: (index: number) => void;
   streaming?: boolean;
-  error?: boolean;
+  streamingContent?: string;
+  streamingTotal?: number;
 }
 
 function friendlyError(raw: string): { summary: string; full: string } {
@@ -17,18 +19,33 @@ function friendlyError(raw: string): { summary: string; full: string } {
   return { summary: last || raw, full: raw };
 }
 
-export function ResponseCard({ modelName, content, metadata, streaming, error }: Props) {
+export function ResponseCard({
+  modelName,
+  responses,
+  activeIndex,
+  onIndexChange,
+  streaming,
+  streamingContent,
+  streamingTotal,
+}: Props) {
   const [showDetails, setShowDetails] = useState(false);
   const [showMeta, setShowMeta] = useState(false);
+
+  const active = responses[activeIndex];
+  const content = streaming ? (streamingContent ?? "") : (active?.content ?? "");
+  const error = active?.error;
+  const metadata = streaming ? undefined : active;
   const err = error ? friendlyError(content) : null;
 
   return (
     <div className="min-w-0 border border-border rounded-lg flex flex-col h-full">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
-        <span className="font-medium text-sm truncate">{modelName}</span>
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30 min-w-0 overflow-hidden">
+        <span className="font-medium text-sm truncate" title={modelName}>{modelName}</span>
         {streaming && (
           <Badge variant="secondary" className="text-xs animate-pulse">
-            streaming...
+            {streamingTotal && streamingTotal > 1
+              ? `streaming 1/${streamingTotal}...`
+              : "streaming..."}
           </Badge>
         )}
       </div>
@@ -61,6 +78,28 @@ export function ResponseCard({ modelName, content, metadata, streaming, error }:
           </pre>
         )}
       </div>
+      {/* Cycling UI */}
+      {responses.length > 1 && !streaming && (
+        <div className="flex items-center justify-center gap-2 px-3 py-1.5 border-t border-border">
+          <button
+            onClick={() => onIndexChange(Math.max(0, activeIndex - 1))}
+            disabled={activeIndex === 0}
+            className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-default"
+          >
+            <CaretLeft size={14} />
+          </button>
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {activeIndex + 1} / {responses.length}
+          </span>
+          <button
+            onClick={() => onIndexChange(Math.min(responses.length - 1, activeIndex + 1))}
+            disabled={activeIndex === responses.length - 1}
+            className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-default"
+          >
+            <CaretRight size={14} />
+          </button>
+        </div>
+      )}
       {metadata && !streaming && (
         <div className="border-t border-border">
           <button

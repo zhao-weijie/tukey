@@ -12,16 +12,20 @@ export function useChat() {
     ws.onmessage = (e) => {
       const s = useChatStore.getState();
       const msg = JSON.parse(e.data);
+      const responseIndex = msg.response_index ?? 0;
       if (msg.type === "chunk" && !msg.done) {
-        s.setStreamChunk(msg.model_id, msg.delta);
+        s.setStreamChunk(msg.model_id, responseIndex, msg.delta);
       } else if (msg.type === "chunk" && msg.done) {
-        s.setStreamDone(msg.model_id, msg.metadata);
+        s.setStreamDone(msg.model_id, responseIndex, msg.metadata);
       } else if (msg.type === "turn_complete") {
         s.addMessage(msg.turn);
         s.clearStream();
+      } else if (msg.type === "turn_updated") {
+        s.updateMessage(msg.turn_id, msg.turn);
+        s.clearStream();
       } else if (msg.type === "error") {
-        s.setStreamChunk(msg.model_id, `[Error] ${msg.error}`);
-        s.setStreamDone(msg.model_id);
+        s.setStreamChunk(msg.model_id, responseIndex, `[Error] ${msg.error}`);
+        s.setStreamDone(msg.model_id, responseIndex);
       }
     };
 
@@ -32,10 +36,26 @@ export function useChat() {
     wsRef.current = ws;
   }, []);
 
-  const send = useCallback((content: string) => {
+  const send = useCallback(
+    (content: string, n: number = 1, responseIndices?: Record<string, number>) => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        useChatStore.getState().clearStream();
+        wsRef.current.send(
+          JSON.stringify({ content, n, response_indices: responseIndices })
+        );
+        return true;
+      }
+      return false;
+    },
+    []
+  );
+
+  const regenerate = useCallback((turnId: string, n: number = 1) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       useChatStore.getState().clearStream();
-      wsRef.current.send(JSON.stringify({ content }));
+      wsRef.current.send(
+        JSON.stringify({ type: "regenerate", turn_id: turnId, n })
+      );
       return true;
     }
     return false;
@@ -46,5 +66,5 @@ export function useChat() {
     wsRef.current = null;
   }, []);
 
-  return { connect, disconnect, send };
+  return { connect, disconnect, send, regenerate };
 }

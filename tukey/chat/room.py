@@ -250,30 +250,38 @@ class ChatRoom:
             provider_type=prov.get("provider"),
         )
 
-    def _build_messages_for_model(self, chat_id: str, model_cfg: dict, user_content: str) -> list[dict]:
+    def _build_messages_for_model(
+        self, chat_id: str, model_cfg: dict, user_content: str,
+        response_indices: dict[str, int] | None = None,
+    ) -> list[dict]:
         msgs: list[dict] = []
         if model_cfg.get("system_prompt"):
             msgs.append({"role": "system", "content": model_cfg["system_prompt"]})
         history = self.get_messages(chat_id)
         for turn in history:
             msgs.append({"role": "user", "content": turn["content"]})
+            target_idx = (response_indices or {}).get(turn["id"], 0)
             for resp in turn.get("responses", []):
-                if resp["model_id"] == model_cfg["id"]:
+                if resp["model_id"] == model_cfg["id"] and resp.get("response_index", 0) == target_idx:
                     msgs.append({"role": "assistant", "content": resp["content"]})
         msgs.append({"role": "user", "content": user_content})
         return msgs
 
     # --- Messaging (uses chat's models_snapshot) ---
 
-    async def send_message(self, chat_id: str, content: str) -> dict[str, Any]:
+    async def send_message(
+        self, chat_id: str, content: str, n: int = 1,
+        response_indices: dict[str, int] | None = None,
+    ) -> dict[str, Any]:
         chat_meta = self.get_chat_meta(chat_id)
         models = chat_meta.get("models_snapshot", [])
         turn_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
+        n = min(max(n, 1), 9)
 
-        async def call_model(model_cfg: dict) -> dict:
+        async def call_model(model_cfg: dict, response_index: int) -> dict:
             provider = self._build_provider(model_cfg["provider_id"])
-            msgs = self._build_messages_for_model(chat_id, model_cfg, content)
+            msgs = self._build_messages_for_model(chat_id, model_cfg, content, response_indices)
             kwargs: dict[str, Any] = {}
             if model_cfg.get("temperature") is not None:
                 kwargs["temperature"] = model_cfg["temperature"]
@@ -292,6 +300,7 @@ class ChatRoom:
             resp = await provider.complete(msgs, model_cfg["model_id"], **kwargs)
             return {
                 "model_id": model_cfg["id"],
+                "response_index": response_index,
                 "content": resp.content,
                 "tokens_in": resp.tokens_in,
                 "tokens_out": resp.tokens_out,
@@ -300,19 +309,28 @@ class ChatRoom:
                 "tokens_per_sec": resp.tokens_per_sec,
             }
 
-        responses = await asyncio.gather(
-            *[call_model(m) for m in models], return_exceptions=True
-        )
+        tasks = []
+        task_keys = []
+        for m in models:
+            for idx in range(n):
+                tasks.append(call_model(m, idx))
+                task_keys.append((m["id"], idx))
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
         resolved = []
-        for i, r in enumerate(responses):
+        for i, r in enumerate(results):
             if isinstance(r, Exception):
+                model_id, resp_idx = task_keys[i]
                 resolved.append({
-                    "model_id": models[i]["id"],
+                    "model_id": model_id,
+                    "response_index": resp_idx,
                     "content": str(r),
                     "error": True,
                 })
             else:
                 resolved.append(r)
+
+        resolved.sort(key=lambda r: (r["model_id"], r.get("response_index", 0)))
 
         turn = {
             "id": turn_id,
@@ -325,10 +343,11 @@ class ChatRoom:
         return turn
 
     async def stream_message(
-        self, chat_id: str, content: str, model_cfg: dict
+        self, chat_id: str, content: str, model_cfg: dict,
+        response_indices: dict[str, int] | None = None,
     ) -> AsyncIterator[StreamChunk]:
         provider = self._build_provider(model_cfg["provider_id"])
-        msgs = self._build_messages_for_model(chat_id, model_cfg, content)
+        msgs = self._build_messages_for_model(chat_id, model_cfg, content, response_indices)
         kwargs: dict[str, Any] = {}
         if model_cfg.get("temperature") is not None:
             kwargs["temperature"] = model_cfg["temperature"]

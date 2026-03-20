@@ -25,6 +25,7 @@ export interface ModelConfig {
 
 export interface ResponseMeta {
   model_id: string;
+  response_index: number;
   content: string;
   tokens_in: number;
   tokens_out: number;
@@ -57,8 +58,16 @@ export interface Chat {
   created_at: string;
 }
 
+interface StreamEntry {
+  content: string;
+  done: boolean;
+  metadata?: Partial<ResponseMeta>;
+  modelId: string;
+  responseIndex: number;
+}
+
 interface StreamState {
-  [modelId: string]: { content: string; done: boolean; metadata?: Partial<ResponseMeta> };
+  [key: string]: StreamEntry; // key = `${modelId}:${responseIndex}`
 }
 
 interface ChatState {
@@ -76,10 +85,11 @@ interface ChatState {
   setActiveChat: (id: string | null) => void;
   setMessages: (msgs: Message[]) => void;
   addMessage: (msg: Message) => void;
+  updateMessage: (turnId: string, msg: Message) => void;
   setProviders: (providers: Provider[]) => void;
 
-  setStreamChunk: (modelId: string, delta: string) => void;
-  setStreamDone: (modelId: string, metadata?: Partial<ResponseMeta>) => void;
+  setStreamChunk: (modelId: string, responseIndex: number, delta: string) => void;
+  setStreamDone: (modelId: string, responseIndex: number, metadata?: Partial<ResponseMeta>) => void;
   clearStream: () => void;
 }
 
@@ -93,29 +103,37 @@ export const useChatStore = create<ChatState>((set) => ({
   providers: [],
 
   setChatrooms: (chatrooms) => set({ chatrooms }),
-  setActiveChatroom: (id) => set({ activeChatroomId: id, chats: [], activeChatId: null, messages: [] }),
+  setActiveChatroom: (id) => set((s) => s.activeChatroomId === id ? {} : { activeChatroomId: id, chats: [], activeChatId: null, messages: [] }),
   setChats: (chats) => set({ chats }),
-  setActiveChat: (id) => set({ activeChatId: id, messages: [] }),
+  setActiveChat: (id) => set((s) => s.activeChatId === id ? {} : { activeChatId: id, messages: [] }),
   setMessages: (msgs) => set({ messages: msgs }),
   addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
+  updateMessage: (turnId, msg) =>
+    set((s) => ({
+      messages: s.messages.map((m) => (m.id === turnId ? msg : m)),
+    })),
   setProviders: (providers) => set({ providers }),
 
-  setStreamChunk: (modelId, delta) =>
+  setStreamChunk: (modelId, responseIndex, delta) =>
     set((s) => {
-      const prev = s.streaming[modelId] || { content: "", done: false };
+      const key = `${modelId}:${responseIndex}`;
+      const prev = s.streaming[key] || { content: "", done: false, modelId, responseIndex };
       return {
         streaming: {
           ...s.streaming,
-          [modelId]: { ...prev, content: prev.content + delta },
+          [key]: { ...prev, content: prev.content + delta, modelId, responseIndex },
         },
       };
     }),
-  setStreamDone: (modelId, metadata) =>
-    set((s) => ({
-      streaming: {
-        ...s.streaming,
-        [modelId]: { ...s.streaming[modelId], done: true, metadata },
-      },
-    })),
+  setStreamDone: (modelId, responseIndex, metadata) =>
+    set((s) => {
+      const key = `${modelId}:${responseIndex}`;
+      return {
+        streaming: {
+          ...s.streaming,
+          [key]: { ...s.streaming[key], done: true, metadata, modelId, responseIndex },
+        },
+      };
+    }),
   clearStream: () => set({ streaming: {} }),
 }));

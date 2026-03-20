@@ -18,8 +18,12 @@ export function ResponseCarousel({ children }: Props) {
   const childCount = Children.count(children);
   const visibleCount = Math.max(1, Math.floor(containerWidth / MIN_CARD_WIDTH));
   const effectiveVisible = Math.min(visibleCount, childCount);
-  const cardWidth = containerWidth > 0
-    ? (containerWidth - GAP * (effectiveVisible - 1)) / effectiveVisible
+
+  const showPeek = childCount > effectiveVisible;
+  const PEEK_WIDTH = showPeek ? Math.round(containerWidth / 10) : 0;
+  const availableWidth = containerWidth > 0 ? containerWidth - PEEK_WIDTH : 0;
+  const cardWidth = availableWidth > 0
+    ? (availableWidth - GAP * (effectiveVisible - 1)) / effectiveVisible
     : MIN_CARD_WIDTH;
 
   useEffect(() => {
@@ -48,12 +52,14 @@ export function ResponseCarousel({ children }: Props) {
     scrollRef.current?.scrollBy({ left: dir * containerWidth, behavior: "smooth" });
   };
 
+  const hasOverflow = childCount > effectiveVisible;
+
   return (
     <div ref={containerRef} className="relative min-w-0 overflow-hidden">
       <div
         ref={scrollRef}
         onScroll={updateScrollButtons}
-        className="flex overflow-x-auto scroll-snap-x-mandatory hide-scrollbar"
+        className="flex overflow-x-auto overflow-y-hidden scroll-snap-x-mandatory hide-scrollbar"
         style={{ gap: GAP, scrollSnapType: "x mandatory" }}
       >
         {Children.map(children, (child) => (
@@ -64,20 +70,27 @@ export function ResponseCarousel({ children }: Props) {
           </div>
         ))}
       </div>
-      {canScrollLeft && (
+      {/* Right-edge fade overlay */}
+      {canScrollRight && (
+        <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-background to-transparent pointer-events-none z-[5]" />
+      )}
+      {/* Nav buttons — always visible (dimmed) when cards overflow */}
+      {hasOverflow && (
         <button
           onClick={() => scroll(-1)}
-          className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 w-7 h-7 rounded-full bg-background border border-border shadow flex items-center justify-center hover:bg-muted"
+          disabled={!canScrollLeft}
+          className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-background border border-border shadow flex items-center justify-center hover:bg-muted disabled:opacity-30 disabled:cursor-default"
         >
-          <CaretLeft size={14} />
+          <CaretLeft size={16} />
         </button>
       )}
-      {canScrollRight && (
+      {hasOverflow && (
         <button
           onClick={() => scroll(1)}
-          className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 z-10 w-7 h-7 rounded-full bg-background border border-border shadow flex items-center justify-center hover:bg-muted"
+          disabled={!canScrollRight}
+          className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-background border border-border shadow flex items-center justify-center hover:bg-muted disabled:opacity-30 disabled:cursor-default"
         >
-          <CaretRight size={14} />
+          <CaretRight size={16} />
         </button>
       )}
     </div>

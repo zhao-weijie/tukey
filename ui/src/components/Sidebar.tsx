@@ -14,12 +14,26 @@ import {
 import { cn } from "@/lib/utils";
 import type { Chatroom, Chat } from "@/stores/chatStore";
 
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia(query).matches : false
+  );
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const handler = (e: MediaQueryListEvent) => setMatches(e.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, [query]);
+  return matches;
+}
+
 interface SidebarProps {
   open: boolean;
   onToggle: () => void;
 }
 
 export function Sidebar({ open, onToggle }: SidebarProps) {
+  const isSmallScreen = useMediaQuery("(max-width: 767px)");
   const {
     chatrooms, setChatrooms,
     activeChatroomId, setActiveChatroom,
@@ -56,6 +70,7 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
 
   const deleteChatroom = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!window.confirm("Delete this chatroom and all its chats?")) return;
     await apiClient.deleteChatroom(id);
     setChatrooms(chatrooms.filter((r) => r.id !== id));
     if (activeChatroomId === id) {
@@ -87,6 +102,7 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
     setActiveChatroom(id);
     setActiveChat(null);
     setExpanded((e) => ({ ...e, [id]: true }));
+    if (isSmallScreen) onToggle();
   };
 
   const createChat = async (chatroomId: string, e: React.MouseEvent) => {
@@ -94,14 +110,16 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
     const chat = await apiClient.createChat(chatroomId);
     if (activeChatroomId === chatroomId) {
       setChats([...chats, chat]);
+    } else {
+      setActiveChatroom(chatroomId);
     }
-    setActiveChatroom(chatroomId);
     setActiveChat(chat.id);
     setExpanded((prev) => ({ ...prev, [chatroomId]: true }));
   };
 
   const deleteChat = async (chatroomId: string, chatId: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!window.confirm("Delete this chat?")) return;
     await apiClient.deleteChat(chatroomId, chatId);
     setChats(chats.filter((c) => c.id !== chatId));
     if (activeChatId === chatId) {
@@ -139,23 +157,37 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
       setActiveChatroom(chatroomId);
     }
     setActiveChat(chatId);
+    if (isSmallScreen) onToggle();
   };
 
   return (
+    <>
+    {/* Backdrop for small screens */}
+    {isSmallScreen && open && (
+      <div
+        className="fixed inset-0 z-30 bg-black/40"
+        onClick={onToggle}
+      />
+    )}
     <div className={cn(
-      "relative border-r border-border flex flex-col h-full bg-sidebar transition-all duration-200",
-      open ? "w-64" : "w-0"
+      "border-r border-border flex flex-col h-full bg-sidebar transition-all duration-200",
+      isSmallScreen
+        ? cn("fixed inset-y-0 left-0 z-40 w-64", open ? "translate-x-0" : "-translate-x-full")
+        : cn("relative", open ? "w-64" : "w-8")
     )}>
       {/* FAB toggle at right border */}
       <button
         onClick={onToggle}
-        className="absolute -right-3 top-4 z-20 w-6 h-6 rounded-full bg-sidebar border border-border shadow-sm flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        className={cn(
+          "absolute top-4 z-20 w-8 h-8 rounded-full bg-sidebar border border-border shadow-sm flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors",
+          isSmallScreen ? "-right-10" : "-right-4"
+        )}
         title={open ? "Collapse sidebar" : "Expand sidebar"}
       >
-        {open ? <CaretLeft size={12} /> : <CaretRight size={12} />}
+        {open ? <CaretLeft size={32} /> : <CaretRight size={32} />}
       </button>
 
-      {open && (
+      {(open || isSmallScreen) && (
       <>
       <div className="p-3 flex items-center justify-between">
         <span className="font-semibold text-lg text-sidebar-foreground">Tukey</span>
@@ -232,6 +264,7 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
       </>
       )}
     </div>
+    </>
   );
 }
 

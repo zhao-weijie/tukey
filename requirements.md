@@ -26,7 +26,7 @@ Programmatic test generation is powerful but dangerous without domain expert inv
 - US1.1 API configuration and model selection — provider CRUD, model ID entry, model-aware config (capabilities endpoint)
 - US1.2 Configuration persistence — API keys and configs saved to ~/.tukey/
 - US1.3 Chat persistence — chatrooms persist models, configs, and conversation history
-- US1.4 Response comparison — parallel fan-out with streaming, side-by-side display
+- US1.4 Response comparison — parallel fan-out with streaming, side-by-side display, multiple completions per model (n=1–9), per-model response cycling, additive regeneration
 - US1.5 Search — full-text search across chatrooms, chats, and messages via /api/search
 - US2.1 Independent configuration — system prompt, temperature, max_tokens, top_p, reasoning_effort (conditional on model capabilities)
 - US2.2 Broadcast configuration — "Apply to all" per field across models in a chatroom
@@ -35,6 +35,9 @@ Programmatic test generation is powerful but dangerous without domain expert inv
 - US3.3 Experiment reproducibility — manifest endpoint, chat replay, full input recording
 - US3.4 Response metadata — tokens in/out, cost, duration, tok/s per response (toggle via ChartBar icon)
 - US4 Programmatic interface — TukeyClient SDK (httpx), provider/chatroom/chat/message CRUD, run_batch, manifest, replay
+- UX: Responsive sidebar — overlay drawer on small screens (<768px) with backdrop, auto-close on selection
+- UX: Delete confirmations — browser confirm dialog before deleting chatrooms or chats
+- UX: Loading skeleton — pulsing placeholder cards shown between send and first streaming chunk
 
 ### In progress
 - US5.1–5.4 Experiment framework — backend complete (experiment CRUD, test cases, run execution with multi-turn + concurrency, annotations, summary, REST API, SDK). Frontend UI not yet built.
@@ -56,6 +59,18 @@ As a user, I want a chatroom to persist which models are included, each model's 
 
 ### US1.4 Response comparison
 As a user, I want to send a prompt once and have it go to all models in the chatroom so I get parallel responses for comparison without copy-pasting.
+
+### US1.4a Multiple completions
+As a user, I want to generate N completions (1–9) per model per prompt so that I can observe response variance and make statistically meaningful comparisons rather than drawing conclusions from a single sample.
+
+### US1.4b Additive regeneration
+As a user, I want to generate additional completions for a completed turn — appended to the existing responses, not replacing them — so I can increase my sample size after reviewing initial results.
+
+### US1.4c Response cycling
+As a user, I want to cycle through multiple completions per model independently (< 1/3 >) so I can compare responses within a model as well as across models.
+
+### US1.4d Multi-turn context selection
+As a user, I want the conversation history sent to models to use whichever response I am currently viewing (per the cycling UI) so that multi-turn conversations branch from the response I chose, not always the first one.
 
 ### US1.5 Search
 As a user, I want to search across saved chatrooms so I can find a prior session without scrolling.

@@ -59,6 +59,12 @@ class Storage:
                 records.append(json.loads(line))
         return records
 
+    def write_jsonl(self, path: Path, records: list[dict[str, Any]]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as f:
+            for record in records:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
     # --- Config shortcut ---
 
     @property
@@ -116,6 +122,9 @@ class Storage:
 
     def read_chat_messages(self, chatroom_id: str, chat_id: str) -> list[dict[str, Any]]:
         return self.read_jsonl(self.chat_dir(chatroom_id, chat_id) / "messages.jsonl")
+
+    def write_chat_messages(self, chatroom_id: str, chat_id: str, messages: list[dict[str, Any]]) -> None:
+        self.write_jsonl(self.chat_dir(chatroom_id, chat_id) / "messages.jsonl", messages)
 
     # --- Experiment helpers ---
 
