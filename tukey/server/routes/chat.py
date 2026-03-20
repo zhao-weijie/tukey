@@ -41,6 +41,10 @@ class ChatCreate(BaseModel):
     name: str | None = None
 
 
+class ChatUpdate(BaseModel):
+    name: str | None = None
+
+
 class MessageSend(BaseModel):
     content: str
 
@@ -119,6 +123,18 @@ def get_chat(chatroom_id: str, chat_id: str):
     meta = s.read_chat_meta(chatroom_id, chat_id)
     if not meta:
         raise HTTPException(404, "Chat not found")
+    return meta
+
+
+@router.patch("/chatrooms/{chatroom_id}/chats/{chat_id}")
+def update_chat(chatroom_id: str, chat_id: str, body: ChatUpdate):
+    s, _ = _get_deps()
+    meta = s.read_chat_meta(chatroom_id, chat_id)
+    if not meta:
+        raise HTTPException(404, "Chat not found")
+    updates = body.model_dump(exclude_none=True)
+    meta.update(updates)
+    s.write_chat_meta(chatroom_id, chat_id, meta)
     return meta
 
 

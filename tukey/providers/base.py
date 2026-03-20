@@ -11,7 +11,7 @@ class LLMResponse:
     content: str = ""
     tokens_in: int = 0
     tokens_out: int = 0
-    cost: float = 0.0
+    cost: float | None = None
     duration_ms: float = 0.0
     tokens_per_sec: float = 0.0
     model: str = ""

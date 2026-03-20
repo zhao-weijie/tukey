@@ -7,9 +7,19 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { ProviderSetup } from "./ProviderSetup";
 import { SearchDialog } from "./SearchDialog";
+import {
+  CaretLeft, CaretRight, CaretDown,
+  Plus, X, DownloadSimple,
+} from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
 import type { Chatroom, Chat } from "@/stores/chatStore";
 
-export function Sidebar() {
+interface SidebarProps {
+  open: boolean;
+  onToggle: () => void;
+}
+
+export function Sidebar({ open, onToggle }: SidebarProps) {
   const {
     chatrooms, setChatrooms,
     activeChatroomId, setActiveChatroom,
@@ -22,14 +32,14 @@ export function Sidebar() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const importRef = useRef<HTMLInputElement>(null);
   const [dataDir, setDataDir] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiClient.listChatrooms().then(setChatrooms).catch(console.error);
+    apiClient.listChatrooms().then(setChatrooms).catch(console.error).finally(() => setLoading(false));
     apiClient.listProviders().then(setProviders).catch(console.error);
     apiClient.getHealth().then((h) => setDataDir(h.data_dir)).catch(console.error);
   }, [setChatrooms, setProviders]);
 
-  // Load chats when a chatroom is expanded or selected
   useEffect(() => {
     if (!activeChatroomId) return;
     apiClient.listChats(activeChatroomId).then(setChats).catch(console.error);
@@ -53,6 +63,20 @@ export function Sidebar() {
       setActiveChat(null);
       setMessages([]);
     }
+  };
+
+  const renameChatroom = async (id: string, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const updated = await apiClient.updateChatroom(id, { name: trimmed });
+    setChatrooms(chatrooms.map((cr) => (cr.id === id ? updated : cr)));
+  };
+
+  const renameChat = async (chatroomId: string, chatId: string, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const updated = await apiClient.updateChat(chatroomId, chatId, { name: trimmed });
+    setChats(chats.map((c) => (c.id === chatId ? updated : c)));
   };
 
   const toggleExpand = (id: string) => {
@@ -113,13 +137,26 @@ export function Sidebar() {
   const selectChat = (chatroomId: string, chatId: string) => {
     if (activeChatroomId !== chatroomId) {
       setActiveChatroom(chatroomId);
-      // chats will reload via useEffect
     }
     setActiveChat(chatId);
   };
 
   return (
-    <div className="w-64 border-r border-border flex flex-col h-full bg-sidebar">
+    <div className={cn(
+      "relative border-r border-border flex flex-col h-full bg-sidebar transition-all duration-200",
+      open ? "w-64" : "w-0"
+    )}>
+      {/* FAB toggle at right border */}
+      <button
+        onClick={onToggle}
+        className="absolute -right-3 top-4 z-20 w-6 h-6 rounded-full bg-sidebar border border-border shadow-sm flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        title={open ? "Collapse sidebar" : "Expand sidebar"}
+      >
+        {open ? <CaretLeft size={12} /> : <CaretRight size={12} />}
+      </button>
+
+      {open && (
+      <>
       <div className="p-3 flex items-center justify-between">
         <span className="font-semibold text-lg text-sidebar-foreground">Tukey</span>
         <SearchDialog />
@@ -133,15 +170,17 @@ export function Sidebar() {
           onKeyDown={(e) => e.key === "Enter" && createChatroom()}
           className="text-sm h-8"
         />
-        <Button size="sm" onClick={createChatroom} className="h-8 px-3 shrink-0">+</Button>
+        <Button size="sm" onClick={createChatroom} className="h-8 px-2 shrink-0" title="New chatroom">
+          <Plus size={16} />
+        </Button>
         <Button
           size="sm"
           variant="outline"
           onClick={() => importRef.current?.click()}
-          className="h-8 px-2 shrink-0 text-xs"
+          className="h-8 px-2 shrink-0"
           title="Import chatroom"
         >
-          Import
+          <DownloadSimple size={16} />
         </Button>
         <input
           ref={importRef}
@@ -153,6 +192,13 @@ export function Sidebar() {
       </div>
       <ScrollArea className="flex-1">
         <div className="p-1 space-y-0.5">
+          {loading && (
+            <>
+              <div className="h-8 rounded-md bg-muted/40 animate-pulse mx-1" />
+              <div className="h-8 rounded-md bg-muted/40 animate-pulse mx-1" />
+              <div className="h-8 rounded-md bg-muted/40 animate-pulse mx-1" />
+            </>
+          )}
           {chatrooms.map((cr) => (
             <ChatroomItem
               key={cr.id}
@@ -168,6 +214,8 @@ export function Sidebar() {
               onCreateChat={(e) => createChat(cr.id, e)}
               onSelectChat={(chatId) => selectChat(cr.id, chatId)}
               onDeleteChat={(chatId, e) => deleteChat(cr.id, chatId, e)}
+              onRenameChatroom={(name) => renameChatroom(cr.id, name)}
+              onRenameChat={(chatId, name) => renameChat(cr.id, chatId, name)}
             />
           ))}
         </div>
@@ -181,13 +229,61 @@ export function Sidebar() {
           </p>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }
 
+/* ── Inline editable name ── */
+
+function InlineEdit({ value, onSave }: { value: string; onSave: (v: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { if (editing) inputRef.current?.select(); }, [editing]);
+
+  const commit = () => {
+    setEditing(false);
+    if (draft.trim() && draft.trim() !== value) onSave(draft.trim());
+    else setDraft(value);
+  };
+
+  if (!editing) {
+    return (
+      <span
+        className="truncate cursor-pointer"
+        onDoubleClick={(e) => { e.stopPropagation(); setEditing(true); setDraft(value); }}
+        title="Double-click to rename"
+      >
+        {value}
+      </span>
+    );
+  }
+
+  return (
+    <input
+      ref={inputRef}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") commit();
+        if (e.key === "Escape") { setEditing(false); setDraft(value); }
+      }}
+      onClick={(e) => e.stopPropagation()}
+      className="bg-transparent border-b border-foreground/30 outline-none text-sm w-full"
+    />
+  );
+}
+
+/* ── Chatroom tree item ── */
+
 function ChatroomItem({
   chatroom, isActive, isExpanded, activeChatId, chats,
   onToggle, onSelect, onDelete, onExport, onCreateChat, onSelectChat, onDeleteChat,
+  onRenameChatroom, onRenameChat,
 }: {
   chatroom: Chatroom;
   isActive: boolean;
@@ -201,6 +297,8 @@ function ChatroomItem({
   onCreateChat: (e: React.MouseEvent) => void;
   onSelectChat: (chatId: string) => void;
   onDeleteChat: (chatId: string, e: React.MouseEvent) => void;
+  onRenameChatroom: (name: string) => void;
+  onRenameChat: (chatId: string, name: string) => void;
 }) {
   return (
     <div>
@@ -212,17 +310,25 @@ function ChatroomItem({
             : "text-sidebar-foreground hover:bg-sidebar-accent/50"
         }`}
       >
-        <div className="flex items-center gap-1 truncate">
-          <span className="text-xs text-muted-foreground">{isExpanded ? "▾" : "▸"}</span>
-          <span className="truncate">{chatroom.name}</span>
-          <span className="text-[10px] text-muted-foreground ml-1">
+        <div className="flex items-center gap-1.5 truncate min-w-0">
+          <span className="text-muted-foreground shrink-0">
+            {isExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
+          </span>
+          <InlineEdit value={chatroom.name} onSave={onRenameChatroom} />
+          <span className="text-[10px] text-muted-foreground ml-1 shrink-0">
             {chatroom.models?.length || 0}m
           </span>
         </div>
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
-          <button onClick={onCreateChat} className="text-muted-foreground hover:text-foreground text-xs px-1" title="New chat">+</button>
-          <button onClick={onExport} className="text-muted-foreground hover:text-foreground text-xs px-1" title="Export chatroom">&#8615;</button>
-          <button onClick={onDelete} className="text-muted-foreground hover:text-destructive text-xs px-1" title="Delete chatroom">×</button>
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 shrink-0">
+          <button onClick={onCreateChat} className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground" title="New chat">
+            <Plus size={14} />
+          </button>
+          <button onClick={onExport} className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground" title="Export">
+            <DownloadSimple size={14} />
+          </button>
+          <button onClick={onDelete} className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive" title="Delete">
+            <X size={14} />
+          </button>
         </div>
       </div>
       {isExpanded && isActive && (
@@ -237,11 +343,14 @@ function ChatroomItem({
                   : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
               }`}
             >
-              <span className="truncate">{chat.name}</span>
+              <InlineEdit value={chat.name} onSave={(name) => onRenameChat(chat.id, name)} />
               <button
                 onClick={(e) => onDeleteChat(chat.id, e)}
-                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive px-1"
-              >×</button>
+                className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive"
+                title="Delete chat"
+              >
+                <X size={12} />
+              </button>
             </div>
           ))}
           {chats.length === 0 && (

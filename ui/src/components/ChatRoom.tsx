@@ -3,11 +3,14 @@ import { useChatStore } from "@/stores/chatStore";
 import { apiClient } from "@/lib/api";
 import { useChat } from "@/hooks/useChat";
 import { ResponseCard } from "./ResponseCard";
+import { ResponseCarousel } from "./ResponseCarousel";
 import { ModelConfig } from "./ModelConfig";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { CaretDown } from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
 import type { Chatroom, Chat, ModelConfig as MC } from "@/stores/chatStore";
 
 export function ChatRoom() {
@@ -23,6 +26,8 @@ export function ChatRoom() {
   const [sending, setSending] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const prevStreaming = useRef(false);
 
   // Load chatroom meta when chatroom changes
   useEffect(() => {
@@ -48,9 +53,21 @@ export function ChatRoom() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChatroomId, activeChatId]);
 
+  // Detect streaming finish → show scroll button instead of forcing scroll
+  const streamEntries = Object.values(streaming);
+  const isStreaming = streamEntries.length > 0 && streamEntries.some(s => !s.done);
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streaming]);
+    if (prevStreaming.current && !isStreaming && streamEntries.length > 0) {
+      setShowScrollBtn(true);
+    }
+    prevStreaming.current = isStreaming;
+  }, [isStreaming, streamEntries.length]);
+
+  const handleScroll = (e: React.UIEvent) => {
+    const el = e.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 100) setShowScrollBtn(false);
+  };
 
   // No chatroom selected
   if (!activeChatroomId) {
@@ -132,6 +149,11 @@ export function ChatRoom() {
           <span className="text-xs text-muted-foreground">
             {displayModels.length} model(s)
           </span>
+          {chat && chatroom && chatroom.models.length !== chat.models_snapshot.length && (
+            <span className="text-[10px] text-amber-500" title="Start a new chat to use updated models">
+              (chatroom has {chatroom.models.length})
+            </span>
+          )}
           <Button size="sm" variant="outline" onClick={() => setShowConfig(!showConfig)} className="h-7 text-xs">
             {showConfig ? "Hide Config" : "Configure"}
           </Button>
@@ -139,13 +161,13 @@ export function ChatRoom() {
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        <ScrollArea className="flex-1 p-4">
+        <ScrollArea className="flex-1 p-4" onScrollCapture={handleScroll}>
           <div className="space-y-6">
             {messages.map((msg) => (
               <div key={msg.id} className="space-y-2">
                 <div className="text-sm font-medium">You</div>
                 <div className="text-sm bg-muted/30 rounded-md p-3">{msg.content}</div>
-                <div className="flex gap-3">
+                <ResponseCarousel>
                   {msg.responses.map((r) => (
                     <ResponseCard
                       key={r.model_id}
@@ -155,14 +177,14 @@ export function ChatRoom() {
                       error={r.error}
                     />
                   ))}
-                </div>
+                </ResponseCarousel>
               </div>
             ))}
 
             {Object.keys(streaming).length > 0 && (
               <div className="space-y-2">
                 <div className="text-sm font-medium">You</div>
-                <div className="flex gap-3">
+                <ResponseCarousel>
                   {Object.entries(streaming).map(([mid, s]) => (
                     <ResponseCard
                       key={mid}
@@ -172,29 +194,44 @@ export function ChatRoom() {
                       metadata={s.done ? s.metadata : undefined}
                     />
                   ))}
-                </div>
+                </ResponseCarousel>
               </div>
             )}
             <div ref={bottomRef} />
           </div>
         </ScrollArea>
 
-        {showConfig && (
-          <div className="w-72 border-l border-border p-3 overflow-auto">
-            <div className="mb-3">
-              <p className="text-[10px] text-muted-foreground">
-                Editing chatroom config. Changes apply to new chats only.
-              </p>
+        <div className={cn(
+          "border-l border-border overflow-hidden transition-[width] duration-200",
+          showConfig ? "w-72" : "w-0"
+        )}>
+          {showConfig && (
+            <div className="w-72 p-3 overflow-auto h-full">
+              <div className="mb-3">
+                <p className="text-[10px] text-muted-foreground">
+                  Editing chatroom config. Changes apply to new chats only.
+                </p>
+              </div>
+              <ModelConfig
+                models={chatroom?.models || []}
+                providers={providers}
+                onUpdate={updateModels}
+              />
             </div>
-            <ModelConfig
-              models={chatroom?.models || []}
-              providers={providers}
-              onUpdate={updateModels}
-            />
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
+      {showScrollBtn && (
+        <div className="flex justify-center py-1">
+          <button
+            onClick={() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); setShowScrollBtn(false); }}
+            className="flex items-center gap-1 px-3 py-1 rounded-full bg-muted text-muted-foreground text-xs hover:bg-muted/80 animate-in fade-in"
+          >
+            <CaretDown size={14} /> New responses
+          </button>
+        </div>
+      )}
       <Separator />
       <div className="p-3 flex gap-2">
         <Textarea

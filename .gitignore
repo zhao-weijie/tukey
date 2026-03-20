@@ -21,7 +21,9 @@ ui/dist/
 
 # Claude Code
 .claude/
+.agents/
 
 # Playwright CLI
+.playwright/
 .playwright-cli/
 ui/.playwright-cli/

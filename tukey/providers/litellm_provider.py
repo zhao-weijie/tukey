@@ -79,6 +79,9 @@ class LiteLLMProvider:
             cost = litellm.completion_cost(completion_response=resp) or 0.0
         except Exception:
             cost = 0.0
+        # Auto-registered models have dummy 0-cost pricing — mark as unknown
+        if cost == 0.0 and model in _registered_models:
+            cost = None
         tps = (tokens_out / (duration_ms / 1000)) if duration_ms > 0 else 0.0
 
         return LLMResponse(
@@ -125,7 +128,7 @@ class LiteLLMProvider:
                         content=full_content,
                         tokens_in=tokens_in,
                         tokens_out=tokens_out,
-                        cost=0.0,
+                        cost=None if model in _registered_models else 0.0,
                         duration_ms=round(duration_ms, 1),
                         tokens_per_sec=round(tps, 1),
                         model=model,

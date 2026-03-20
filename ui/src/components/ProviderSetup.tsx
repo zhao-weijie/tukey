@@ -36,7 +36,6 @@ export function ProviderSetup({ providers, onUpdate }: Props) {
     setApiKey("");
     setBaseUrl("");
     setDisplayName("");
-    setOpen(false);
   };
 
   const removeProvider = async (id: string) => {

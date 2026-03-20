@@ -29,6 +29,18 @@ export function SearchDialog() {
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const { setActiveChatroom, setActiveChat } = useChatStore();
 
+  // Cmd+K / Ctrl+K global shortcut
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setOpen(true);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   const doSearch = useCallback(async (q: string) => {
     if (!q.trim()) {
       setResults([]);

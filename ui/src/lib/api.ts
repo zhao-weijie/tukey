@@ -39,6 +39,11 @@ export const apiClient = {
     api<any>(`/api/chat/chatrooms/${chatroomId}/chats/${chatId}`),
   deleteChat: (chatroomId: string, chatId: string) =>
     api<void>(`/api/chat/chatrooms/${chatroomId}/chats/${chatId}`, { method: "DELETE" }),
+  updateChat: (chatroomId: string, chatId: string, data: any) =>
+    api<any>(`/api/chat/chatrooms/${chatroomId}/chats/${chatId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
 
   // Messages
   getMessages: (chatroomId: string, chatId: string) =>

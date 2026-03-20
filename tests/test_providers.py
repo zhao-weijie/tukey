@@ -8,7 +8,7 @@ def test_llm_response_defaults():
     r = LLMResponse()
     assert r.content == ""
     assert r.tokens_in == 0
-    assert r.cost == 0.0
+    assert r.cost is None
 
 
 def test_stream_chunk():

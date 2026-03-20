@@ -23,7 +23,7 @@ export function ResponseCard({ modelName, content, metadata, streaming, error }:
   const err = error ? friendlyError(content) : null;
 
   return (
-    <div className="flex-1 min-w-0 border border-border rounded-lg flex flex-col">
+    <div className="min-w-0 border border-border rounded-lg flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
         <span className="font-medium text-sm truncate">{modelName}</span>
         {streaming && (
@@ -76,7 +76,9 @@ export function ResponseCard({ modelName, content, metadata, streaming, error }:
               {metadata.tokens_out != null && <span>{metadata.tokens_out} out</span>}
               {metadata.duration_ms != null && <span>{(metadata.duration_ms / 1000).toFixed(1)}s</span>}
               {metadata.tokens_per_sec != null && <span>{metadata.tokens_per_sec} tok/s</span>}
-              {metadata.cost != null && metadata.cost > 0 && <span>${metadata.cost.toFixed(6)}</span>}
+              {metadata.cost === null || metadata.cost === undefined
+                ? <span>cost: N/A</span>
+                : <span>${metadata.cost.toFixed(6)}</span>}
             </div>
           )}
         </div>

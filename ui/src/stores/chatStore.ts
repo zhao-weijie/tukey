@@ -28,7 +28,7 @@ export interface ResponseMeta {
   content: string;
   tokens_in: number;
   tokens_out: number;
-  cost: number;
+  cost: number | null;
   duration_ms: number;
   tokens_per_sec: number;
   error?: boolean;

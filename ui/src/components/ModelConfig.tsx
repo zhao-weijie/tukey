@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,18 +30,22 @@ export function ModelConfig({ models, providers, onUpdate }: Props) {
   const [availableModels, setAvailableModels] = useState<{ id: string; name: string }[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
+  const capsRef = useRef<Record<string, Caps>>({});
+
   const fetchCaps = useCallback(async (modelId: string) => {
-    if (caps[modelId]) return;
+    if (capsRef.current[modelId]) return;
     try {
       const c = await apiClient.getModelCapabilities(modelId);
-      setCaps((prev) => ({ ...prev, [modelId]: c }));
+      capsRef.current = { ...capsRef.current, [modelId]: c };
+      setCaps({ ...capsRef.current });
     } catch {
-      setCaps((prev) => ({
-        ...prev,
+      capsRef.current = {
+        ...capsRef.current,
         [modelId]: { supports_reasoning: false, supports_vision: false, max_tokens: null, max_input_tokens: null },
-      }));
+      };
+      setCaps({ ...capsRef.current });
     }
-  }, [caps]);
+  }, []);
 
   useEffect(() => {
     models.forEach((m) => fetchCaps(m.model_id));
@@ -191,6 +195,63 @@ function ApplyBtn({ onClick }: { onClick: () => void }) {
 function ModelCard({ model: m, idx, reasoning, showApply, onUpdate, onRemove, onApplyToAll }: CardProps) {
   const re = (m.extra_params.reasoning_effort as string) || "none";
 
+  // Local state + debounce for textareas to prevent cursor reset
+  const [localPrompt, setLocalPrompt] = useState(m.system_prompt);
+  const [localSchema, setLocalSchema] = useState(
+    m.response_format?.type === "json_schema" ? JSON.stringify(m.response_format.json_schema || {}, null, 2) : ""
+  );
+  const [localTools, setLocalTools] = useState(m.tools ? JSON.stringify(m.tools, null, 2) : "");
+  const promptDebounce = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const schemaDebounce = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const toolsDebounce = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Sync from parent (e.g. "Apply to all")
+  useEffect(() => { setLocalPrompt(m.system_prompt); }, [m.system_prompt]);
+  useEffect(() => {
+    if (m.response_format?.type === "json_schema") {
+      setLocalSchema(JSON.stringify(m.response_format.json_schema || {}, null, 2));
+    }
+  }, [m.response_format]);
+  useEffect(() => {
+    setLocalTools(m.tools ? JSON.stringify(m.tools, null, 2) : "");
+  }, [m.tools]);
+
+  // Cleanup on unmount
+  useEffect(() => () => {
+    clearTimeout(promptDebounce.current);
+    clearTimeout(schemaDebounce.current);
+    clearTimeout(toolsDebounce.current);
+  }, []);
+
+  const handlePromptChange = (value: string) => {
+    setLocalPrompt(value);
+    clearTimeout(promptDebounce.current);
+    promptDebounce.current = setTimeout(() => onUpdate(idx, { system_prompt: value }), 500);
+  };
+
+  const handleSchemaChange = (value: string) => {
+    setLocalSchema(value);
+    clearTimeout(schemaDebounce.current);
+    schemaDebounce.current = setTimeout(() => {
+      try {
+        const schema = JSON.parse(value);
+        onUpdate(idx, { response_format: { type: "json_schema", json_schema: schema } });
+      } catch { /* ignore parse errors while typing */ }
+    }, 500);
+  };
+
+  const handleToolsChange = (value: string) => {
+    setLocalTools(value);
+    clearTimeout(toolsDebounce.current);
+    toolsDebounce.current = setTimeout(() => {
+      if (!value.trim()) { onUpdate(idx, { tools: null }); return; }
+      try {
+        const tools = JSON.parse(value);
+        if (Array.isArray(tools)) onUpdate(idx, { tools });
+      } catch { /* ignore parse errors while typing */ }
+    }, 500);
+  };
+
   return (
     <div className="p-3 border border-border rounded-md space-y-2">
       <div className="flex items-center justify-between">
@@ -204,8 +265,8 @@ function ModelCard({ model: m, idx, reasoning, showApply, onUpdate, onRemove, on
           <Label className="text-xs">System Prompt</Label>
           {showApply && <ApplyBtn onClick={() => onApplyToAll(idx, "system_prompt")} />}
         </div>
-        <Textarea value={m.system_prompt} rows={2}
-          onChange={(e) => onUpdate(idx, { system_prompt: e.target.value })}
+        <Textarea value={localPrompt} rows={2}
+          onChange={(e) => handlePromptChange(e.target.value)}
           className="text-xs mt-1" placeholder="You are a helpful assistant..." />
       </div>
 
@@ -283,14 +344,9 @@ function ModelCard({ model: m, idx, reasoning, showApply, onUpdate, onRemove, on
         </select>
         {m.response_format?.type === "json_schema" && (
           <Textarea
-            value={JSON.stringify(m.response_format.json_schema || {}, null, 2)}
+            value={localSchema}
             rows={3}
-            onChange={(e) => {
-              try {
-                const schema = JSON.parse(e.target.value);
-                onUpdate(idx, { response_format: { type: "json_schema", json_schema: schema } });
-              } catch { /* ignore parse errors while typing */ }
-            }}
+            onChange={(e) => handleSchemaChange(e.target.value)}
             className="text-xs mt-1 font-mono"
             placeholder='{"name": "my_schema", "schema": {...}}'
           />
@@ -323,15 +379,9 @@ function ModelCard({ model: m, idx, reasoning, showApply, onUpdate, onRemove, on
           <Label className="text-xs">Tools (JSON)</Label>
         </div>
         <Textarea
-          value={m.tools ? JSON.stringify(m.tools, null, 2) : ""}
+          value={localTools}
           rows={3}
-          onChange={(e) => {
-            if (!e.target.value.trim()) { onUpdate(idx, { tools: null }); return; }
-            try {
-              const tools = JSON.parse(e.target.value);
-              if (Array.isArray(tools)) onUpdate(idx, { tools });
-            } catch { /* ignore parse errors while typing */ }
-          }}
+          onChange={(e) => handleToolsChange(e.target.value)}
           className="text-xs mt-1 font-mono"
           placeholder='[{"type": "function", "function": {"name": "...", "parameters": {...}}}]'
         />
