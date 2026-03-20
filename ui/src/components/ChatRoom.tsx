@@ -6,6 +6,7 @@ import { ResponseCard } from "./ResponseCard";
 import { ResponseCarousel } from "./ResponseCarousel";
 import { ModelConfig } from "./ModelConfig";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -250,13 +251,13 @@ export function ChatRoom() {
                   {regenTurnId === msg.id && (
                     <div className="flex items-center gap-2 pl-1">
                       <span className="text-xs text-muted-foreground">Add</span>
-                      <input
+                      <Input
                         type="number"
                         min={1}
                         max={9}
                         value={regenCount}
                         onChange={(e) => setRegenCount(Math.min(9, Math.max(1, Number(e.target.value) || 1)))}
-                        className="w-12 h-6 text-xs text-center border border-border rounded bg-background"
+                        className="w-12 h-6 text-xs text-center"
                       />
                       <span className="text-xs text-muted-foreground">more</span>
                       <Button

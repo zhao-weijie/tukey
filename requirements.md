@@ -104,6 +104,22 @@ As a user, I want to save a named, versioned experiment — comprising a defined
 ### US5.2 Human annotation
 As a domain expert, I want to review the outputs of a batch experiment my technical colleague configured and ran, and record my own pass/fail judgments, severity ratings, and qualitative notes against each response, so that my domain knowledge contributes independent ground truth rather than being anchored by the model's own outputs or a developer's interpretation.
 
+**US5.2.1** Enter annotation mode — As an evaluator, I can toggle "annotation mode" on a response card so that text selection creates annotations instead of default browser selection.
+**US5.2.2** Highlight and rate — As an evaluator, I can select a text range in a response, then give it a thumbs up or thumbs down, so I can quickly flag good/bad sections without writing a full comment.
+**US5.2.3** Add a comment — As an evaluator, after highlighting and rating, I see a text input popover where I can type a freeform comment and submit it, so I can explain why the section is good or bad.
+**US5.2.4** See highlights — As an evaluator, I can see all annotated ranges highlighted in the response body (green for positive, red for negative) so I can scan quality at a glance.
+**US5.2.5** Review a comment — As an evaluator, I can click/hover a highlight to see its rating and comment in a popover, so I can review past annotations.
+**US5.2.6** Edit/delete an annotation — As an evaluator, I can edit the comment text or delete an annotation entirely from the review popover.
+**US5.2.7** Annotation count in action bar — As an evaluator, I can see a badge/counter in the card's action bar showing the number of annotations, so I know at a glance whether a response has been reviewed.
+**US5.2.8** Persist annotations — As an evaluator, annotations survive page refresh and are tied to the specific response (model + response index), so I don't lose my work.
+**US5.2.9** Navigate between annotations — As an evaluator, I can step through annotations sequentially (prev/next) so I can review them in order without scanning the full response.
+
+
+**US5.2 Out of scope:**
+- Multi-user / collaborative annotation
+- Annotation on streaming responses (only completed responses)
+- Annotation across response versions (each response index has its own annotations)
+
 ### US5.3 Shared evaluation
 As a team, we want domain experts and developers to work from the same experiment — the same test cases, the same model configs, the same raw outputs — so that our conclusions can be compared, reconciled, and trusted as coming from a common source of truth rather than incomparable tools.
 

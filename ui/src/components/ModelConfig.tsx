@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { apiClient } from "@/lib/api";
 import type { ModelConfig as MC, Provider } from "@/stores/chatStore";
 
@@ -115,15 +116,16 @@ export function ModelConfig({ models, providers, onUpdate }: Props) {
         <div className="space-y-2 p-3 border border-border rounded-md bg-muted/20">
           <div>
             <Label className="text-xs">Provider</Label>
-            <select
-              value={newProviderId}
-              onChange={(e) => setNewProviderId(e.target.value)}
-              className="w-full mt-1 h-8 px-2 text-sm border border-input rounded-md bg-background"
-            >
-              {providers.map((p) => (
-                <option key={p.id} value={p.id}>{p.display_name || p.provider}</option>
-              ))}
-            </select>
+            <Select value={newProviderId} onValueChange={(v) => v && setNewProviderId(v)}>
+              <SelectTrigger className="w-full mt-1 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {providers.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.display_name || p.provider}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="relative">
             <Label className="text-xs">Model ID</Label>
@@ -312,14 +314,17 @@ function ModelCard({ model: m, idx, reasoning, showApply, onUpdate, onRemove, on
             <Label className="text-xs">Reasoning Effort</Label>
             {showApply && <ApplyBtn onClick={() => onApplyToAll(idx, "reasoning_effort")} />}
           </div>
-          <select value={re}
-            onChange={(e) => onUpdate(idx, { extra_params: { ...m.extra_params, reasoning_effort: e.target.value === "none" ? undefined : e.target.value } })}
-            className="w-full mt-1 h-7 px-2 text-xs border border-input rounded-md bg-background">
-            <option value="none">None</option>
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-          </select>
+          <Select value={re} onValueChange={(v) => onUpdate(idx, { extra_params: { ...m.extra_params, reasoning_effort: v === "none" ? undefined : v } })}>
+            <SelectTrigger size="sm" className="w-full mt-1 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">None</SelectItem>
+              <SelectItem value="low">Low</SelectItem>
+              <SelectItem value="medium">Medium</SelectItem>
+              <SelectItem value="high">High</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       )}
 
@@ -328,20 +333,20 @@ function ModelCard({ model: m, idx, reasoning, showApply, onUpdate, onRemove, on
         <div className="flex items-center">
           <Label className="text-xs">Response Format</Label>
         </div>
-        <select
-          value={m.response_format?.type || "text"}
-          onChange={(e) => {
-            const v = e.target.value;
+        <Select value={m.response_format?.type || "text"} onValueChange={(v) => {
             if (v === "text") onUpdate(idx, { response_format: null });
             else if (v === "json_object") onUpdate(idx, { response_format: { type: "json_object" } });
             else if (v === "json_schema") onUpdate(idx, { response_format: { type: "json_schema", json_schema: m.response_format?.json_schema || {} } });
-          }}
-          className="w-full mt-1 h-7 px-2 text-xs border border-input rounded-md bg-background"
-        >
-          <option value="text">Text</option>
-          <option value="json_object">JSON Object</option>
-          <option value="json_schema">JSON Schema</option>
-        </select>
+          }}>
+          <SelectTrigger size="sm" className="w-full mt-1 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="text">Text</SelectItem>
+            <SelectItem value="json_object">JSON Object</SelectItem>
+            <SelectItem value="json_schema">JSON Schema</SelectItem>
+          </SelectContent>
+        </Select>
         {m.response_format?.type === "json_schema" && (
           <Textarea
             value={localSchema}
@@ -358,19 +363,19 @@ function ModelCard({ model: m, idx, reasoning, showApply, onUpdate, onRemove, on
         <div className="flex items-center">
           <Label className="text-xs">Tool Choice</Label>
         </div>
-        <select
-          value={typeof m.tool_choice === "string" ? m.tool_choice : m.tool_choice ? "function" : "none"}
-          onChange={(e) => {
-            const v = e.target.value;
+        <Select value={typeof m.tool_choice === "string" ? m.tool_choice : m.tool_choice ? "function" : "none"} onValueChange={(v) => {
             if (v === "none") onUpdate(idx, { tool_choice: null });
             else onUpdate(idx, { tool_choice: v });
-          }}
-          className="w-full mt-1 h-7 px-2 text-xs border border-input rounded-md bg-background"
-        >
-          <option value="none">None</option>
-          <option value="auto">Auto</option>
-          <option value="required">Required</option>
-        </select>
+          }}>
+          <SelectTrigger size="sm" className="w-full mt-1 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">None</SelectItem>
+            <SelectItem value="auto">Auto</SelectItem>
+            <SelectItem value="required">Required</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Tools */}

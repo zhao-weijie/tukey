@@ -67,6 +67,8 @@ class LiteLLMProvider:
                 kwargs[key] = extra[key]
         if "extra_params" in extra and isinstance(extra["extra_params"], dict):
             kwargs.update(extra["extra_params"])
+        if extra.get("stream"):
+            kwargs["stream_options"] = {"include_usage": True}
         return kwargs
 
     async def complete(
