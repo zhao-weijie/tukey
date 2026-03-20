@@ -120,3 +120,55 @@ class TukeyClient:
             turn = self.send_message(chatroom_id, chat["id"], prompt)
             turns.append(turn)
         return chat, turns
+
+    # --- Experiments ---
+
+    def create_experiment(self, name: str, chatroom_id: str, brief: dict) -> dict:
+        return self._request("POST", "/api/experiments", json={
+            "name": name, "chatroom_id": chatroom_id, "brief": brief,
+        })
+
+    def list_experiments(self) -> list[dict]:
+        return self._request("GET", "/api/experiments")
+
+    def get_experiment(self, experiment_id: str) -> dict:
+        return self._request("GET", f"/api/experiments/{experiment_id}")
+
+    def update_experiment(self, experiment_id: str, **kwargs: Any) -> dict:
+        return self._request("PATCH", f"/api/experiments/{experiment_id}", json=kwargs)
+
+    def delete_experiment(self, experiment_id: str) -> None:
+        self._request("DELETE", f"/api/experiments/{experiment_id}")
+
+    def add_test_cases(self, experiment_id: str, test_cases: list[dict]) -> list[dict]:
+        return self._request("POST", f"/api/experiments/{experiment_id}/test-cases",
+                             json={"test_cases": test_cases})
+
+    def get_test_cases(self, experiment_id: str) -> list[dict]:
+        return self._request("GET", f"/api/experiments/{experiment_id}/test-cases")
+
+    def replace_test_cases(self, experiment_id: str, test_cases: list[dict]) -> list[dict]:
+        return self._request("PUT", f"/api/experiments/{experiment_id}/test-cases",
+                             json={"test_cases": test_cases})
+
+    def run_experiment(self, experiment_id: str) -> dict:
+        return self._request("POST", f"/api/experiments/{experiment_id}/run")
+
+    def list_runs(self, experiment_id: str) -> list[dict]:
+        return self._request("GET", f"/api/experiments/{experiment_id}/runs")
+
+    def get_run(self, experiment_id: str, run_id: str) -> dict:
+        return self._request("GET", f"/api/experiments/{experiment_id}/runs/{run_id}")
+
+    def get_results(self, experiment_id: str, run_id: str) -> list[dict]:
+        return self._request("GET", f"/api/experiments/{experiment_id}/runs/{run_id}/results")
+
+    def add_annotation(self, experiment_id: str, run_id: str, **kwargs: Any) -> dict:
+        return self._request("POST", f"/api/experiments/{experiment_id}/runs/{run_id}/annotations",
+                             json=kwargs)
+
+    def get_annotations(self, experiment_id: str, run_id: str) -> list[dict]:
+        return self._request("GET", f"/api/experiments/{experiment_id}/runs/{run_id}/annotations")
+
+    def get_run_summary(self, experiment_id: str, run_id: str) -> dict:
+        return self._request("GET", f"/api/experiments/{experiment_id}/runs/{run_id}/summary")

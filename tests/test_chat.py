@@ -256,3 +256,53 @@ def test_api_manifest(client):
 def test_api_manifest_404(client):
     r = client.get("/api/chat/chatrooms/nonexistent/chats/fake/manifest")
     assert r.status_code == 404
+
+
+# --- Model config: response_format / tools / tool_choice ---
+
+def test_model_config_new_fields_preserved(storage, config):
+    room = ChatRoom(storage, config)
+    providers = config.list_providers()
+    meta = room.create("Room", models=[{
+        "provider_id": providers[0]["id"],
+        "model_id": "gpt-4",
+        "display_name": "GPT-4",
+        "response_format": {"type": "json_object"},
+        "tools": [{"type": "function", "function": {"name": "get_weather", "parameters": {"type": "object"}}}],
+        "tool_choice": "auto",
+    }])
+    m = meta["models"][0]
+    assert m["response_format"] == {"type": "json_object"}
+    assert m["tools"][0]["function"]["name"] == "get_weather"
+    assert m["tool_choice"] == "auto"
+
+
+def test_model_config_new_fields_in_snapshot(storage, config):
+    room = ChatRoom(storage, config)
+    providers = config.list_providers()
+    room.create("Room", models=[{
+        "provider_id": providers[0]["id"],
+        "model_id": "gpt-4",
+        "display_name": "GPT-4",
+        "response_format": {"type": "json_schema", "json_schema": {"name": "test"}},
+        "tools": [{"type": "function", "function": {"name": "search", "parameters": {}}}],
+        "tool_choice": "required",
+    }])
+    chat = room.create_chat("Snap")
+    snap = chat["models_snapshot"][0]
+    assert snap["response_format"]["type"] == "json_schema"
+    assert snap["tools"][0]["function"]["name"] == "search"
+    assert snap["tool_choice"] == "required"
+
+
+def test_model_config_new_fields_default_none(storage, config):
+    room = ChatRoom(storage, config)
+    providers = config.list_providers()
+    meta = room.create("Room", models=[{
+        "provider_id": providers[0]["id"],
+        "model_id": "gpt-4",
+    }])
+    m = meta["models"][0]
+    assert m["response_format"] is None
+    assert m["tools"] is None
+    assert m["tool_choice"] is None

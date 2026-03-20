@@ -38,6 +38,9 @@ class ChatRoom:
                 "max_tokens": m.get("max_tokens"),
                 "top_p": m.get("top_p"),
                 "extra_params": m.get("extra_params", {}),
+                "response_format": m.get("response_format"),
+                "tools": m.get("tools"),
+                "tool_choice": m.get("tool_choice"),
             })
         meta = {
             "id": self.chatroom_id,
@@ -276,6 +279,12 @@ class ChatRoom:
                 kwargs["top_p"] = model_cfg["top_p"]
             if model_cfg.get("extra_params"):
                 kwargs["extra_params"] = model_cfg["extra_params"]
+            if model_cfg.get("response_format"):
+                kwargs["response_format"] = model_cfg["response_format"]
+            if model_cfg.get("tools"):
+                kwargs["tools"] = model_cfg["tools"]
+            if model_cfg.get("tool_choice") is not None:
+                kwargs["tool_choice"] = model_cfg["tool_choice"]
             resp = await provider.complete(msgs, model_cfg["model_id"], **kwargs)
             return {
                 "model_id": model_cfg["id"],
@@ -323,5 +332,11 @@ class ChatRoom:
             kwargs["max_tokens"] = model_cfg["max_tokens"]
         if model_cfg.get("top_p") is not None:
             kwargs["top_p"] = model_cfg["top_p"]
+        if model_cfg.get("response_format"):
+            kwargs["response_format"] = model_cfg["response_format"]
+        if model_cfg.get("tools"):
+            kwargs["tools"] = model_cfg["tools"]
+        if model_cfg.get("tool_choice") is not None:
+            kwargs["tool_choice"] = model_cfg["tool_choice"]
         async for chunk in provider.stream(msgs, model_cfg["model_id"], **kwargs):
             yield chunk

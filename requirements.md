@@ -36,8 +36,10 @@ Programmatic test generation is powerful but dangerous without domain expert inv
 - US3.4 Response metadata — tokens in/out, cost, duration, tok/s per response (toggle via ChartBar icon)
 - US4 Programmatic interface — TukeyClient SDK (httpx), provider/chatroom/chat/message CRUD, run_batch, manifest, replay
 
+### In progress
+- US5.1–5.4 Experiment framework — backend complete (experiment CRUD, test cases, run execution with multi-turn + concurrency, annotations, summary, REST API, SDK). Frontend UI not yet built.
+
 ### Not started
-- US5.1–5.4 Experiment framework
 - US6 Synthesizer
 - SUS1–SUS5 Stretch stories
 

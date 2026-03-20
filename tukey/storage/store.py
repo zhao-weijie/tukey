@@ -15,10 +15,12 @@ class Storage:
     def __init__(self, data_dir: Path | str | None = None):
         self.data_dir = Path(data_dir) if data_dir else DEFAULT_DATA_DIR
         self.chatrooms_dir = self.data_dir / "chatrooms"
+        self.experiments_dir = self.data_dir / "experiments"
 
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.chatrooms_dir.mkdir(exist_ok=True)
+        self.experiments_dir.mkdir(exist_ok=True)
 
     def chatroom_dir(self, chatroom_id: str) -> Path:
         return self.chatrooms_dir / chatroom_id
@@ -114,3 +116,65 @@ class Storage:
 
     def read_chat_messages(self, chatroom_id: str, chat_id: str) -> list[dict[str, Any]]:
         return self.read_jsonl(self.chat_dir(chatroom_id, chat_id) / "messages.jsonl")
+
+    # --- Experiment helpers ---
+
+    def experiment_dir(self, experiment_id: str) -> Path:
+        return self.experiments_dir / experiment_id
+
+    def run_dir(self, experiment_id: str, run_id: str) -> Path:
+        return self.experiment_dir(experiment_id) / "runs" / run_id
+
+    def list_experiments(self) -> list[str]:
+        if not self.experiments_dir.exists():
+            return []
+        return [d.name for d in sorted(self.experiments_dir.iterdir()) if d.is_dir()]
+
+    def read_experiment_meta(self, experiment_id: str) -> dict[str, Any]:
+        return self.read_json(self.experiment_dir(experiment_id) / "meta.json")
+
+    def write_experiment_meta(self, experiment_id: str, meta: dict[str, Any]) -> None:
+        self.write_json(self.experiment_dir(experiment_id) / "meta.json", meta)
+
+    def delete_experiment(self, experiment_id: str) -> None:
+        d = self.experiment_dir(experiment_id)
+        if d.exists():
+            shutil.rmtree(d)
+
+    def read_test_cases(self, experiment_id: str) -> list[dict[str, Any]]:
+        return self.read_jsonl(self.experiment_dir(experiment_id) / "test_cases.jsonl")
+
+    def append_test_case(self, experiment_id: str, case: dict[str, Any]) -> None:
+        self.append_jsonl(self.experiment_dir(experiment_id) / "test_cases.jsonl", case)
+
+    def write_test_cases(self, experiment_id: str, cases: list[dict[str, Any]]) -> None:
+        path = self.experiment_dir(experiment_id) / "test_cases.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            "".join(json.dumps(c, ensure_ascii=False) + "\n" for c in cases),
+            encoding="utf-8",
+        )
+
+    def list_runs(self, experiment_id: str) -> list[str]:
+        runs_dir = self.experiment_dir(experiment_id) / "runs"
+        if not runs_dir.exists():
+            return []
+        return [d.name for d in sorted(runs_dir.iterdir()) if d.is_dir()]
+
+    def read_run_meta(self, experiment_id: str, run_id: str) -> dict[str, Any]:
+        return self.read_json(self.run_dir(experiment_id, run_id) / "meta.json")
+
+    def write_run_meta(self, experiment_id: str, run_id: str, meta: dict[str, Any]) -> None:
+        self.write_json(self.run_dir(experiment_id, run_id) / "meta.json", meta)
+
+    def append_result(self, experiment_id: str, run_id: str, result: dict[str, Any]) -> None:
+        self.append_jsonl(self.run_dir(experiment_id, run_id) / "results.jsonl", result)
+
+    def read_results(self, experiment_id: str, run_id: str) -> list[dict[str, Any]]:
+        return self.read_jsonl(self.run_dir(experiment_id, run_id) / "results.jsonl")
+
+    def append_annotation(self, experiment_id: str, run_id: str, annotation: dict[str, Any]) -> None:
+        self.append_jsonl(self.run_dir(experiment_id, run_id) / "annotations.jsonl", annotation)
+
+    def read_annotations(self, experiment_id: str, run_id: str) -> list[dict[str, Any]]:
+        return self.read_jsonl(self.run_dir(experiment_id, run_id) / "annotations.jsonl")

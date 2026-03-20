@@ -55,8 +55,9 @@ class LiteLLMProvider:
         if self.base_url:
             kwargs["api_base"] = self.base_url
         # Forward supported params
-        for key in ("temperature", "max_tokens", "top_p", "stop", "stream"):
-            if key in extra:
+        for key in ("temperature", "max_tokens", "top_p", "stop", "stream",
+                    "response_format", "tools", "tool_choice"):
+            if key in extra and extra[key] is not None:
                 kwargs[key] = extra[key]
         if "extra_params" in extra and isinstance(extra["extra_params"], dict):
             kwargs.update(extra["extra_params"])

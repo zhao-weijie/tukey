@@ -57,6 +57,9 @@ export function ModelConfig({ models, providers, onUpdate }: Props) {
       max_tokens: null,
       top_p: null,
       extra_params: {},
+      response_format: null,
+      tools: null,
+      tool_choice: null,
     };
     onUpdate([...models, m]);
     setNewModelId("");
@@ -233,6 +236,81 @@ function ModelCard({ model: m, idx, reasoning, showApply, onUpdate, onRemove, on
           </select>
         </div>
       )}
+
+      {/* Response Format */}
+      <div>
+        <div className="flex items-center">
+          <Label className="text-xs">Response Format</Label>
+        </div>
+        <select
+          value={m.response_format?.type || "text"}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === "text") onUpdate(idx, { response_format: null });
+            else if (v === "json_object") onUpdate(idx, { response_format: { type: "json_object" } });
+            else if (v === "json_schema") onUpdate(idx, { response_format: { type: "json_schema", json_schema: m.response_format?.json_schema || {} } });
+          }}
+          className="w-full mt-1 h-7 px-2 text-xs border border-input rounded-md bg-background"
+        >
+          <option value="text">Text</option>
+          <option value="json_object">JSON Object</option>
+          <option value="json_schema">JSON Schema</option>
+        </select>
+        {m.response_format?.type === "json_schema" && (
+          <Textarea
+            value={JSON.stringify(m.response_format.json_schema || {}, null, 2)}
+            rows={3}
+            onChange={(e) => {
+              try {
+                const schema = JSON.parse(e.target.value);
+                onUpdate(idx, { response_format: { type: "json_schema", json_schema: schema } });
+              } catch { /* ignore parse errors while typing */ }
+            }}
+            className="text-xs mt-1 font-mono"
+            placeholder='{"name": "my_schema", "schema": {...}}'
+          />
+        )}
+      </div>
+
+      {/* Tool Choice */}
+      <div>
+        <div className="flex items-center">
+          <Label className="text-xs">Tool Choice</Label>
+        </div>
+        <select
+          value={typeof m.tool_choice === "string" ? m.tool_choice : m.tool_choice ? "function" : "none"}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === "none") onUpdate(idx, { tool_choice: null });
+            else onUpdate(idx, { tool_choice: v });
+          }}
+          className="w-full mt-1 h-7 px-2 text-xs border border-input rounded-md bg-background"
+        >
+          <option value="none">None</option>
+          <option value="auto">Auto</option>
+          <option value="required">Required</option>
+        </select>
+      </div>
+
+      {/* Tools */}
+      <div>
+        <div className="flex items-center">
+          <Label className="text-xs">Tools (JSON)</Label>
+        </div>
+        <Textarea
+          value={m.tools ? JSON.stringify(m.tools, null, 2) : ""}
+          rows={3}
+          onChange={(e) => {
+            if (!e.target.value.trim()) { onUpdate(idx, { tools: null }); return; }
+            try {
+              const tools = JSON.parse(e.target.value);
+              if (Array.isArray(tools)) onUpdate(idx, { tools });
+            } catch { /* ignore parse errors while typing */ }
+          }}
+          className="text-xs mt-1 font-mono"
+          placeholder='[{"type": "function", "function": {"name": "...", "parameters": {...}}}]'
+        />
+      </div>
 
       <Separator />
     </div>

@@ -18,6 +18,7 @@ from tukey.server.routes import config as config_routes
 from tukey.server.routes import chat as chat_routes
 from tukey.server.routes import models as models_routes
 from tukey.server.routes import search as search_routes
+from tukey.server.routes import experiments as experiment_routes
 from tukey.server import websocket as ws_routes
 
 UI_DIST = Path(__file__).resolve().parent.parent.parent / "ui" / "dist"
@@ -43,12 +44,14 @@ def create_app(data_dir: str | None = None) -> FastAPI:
     chat_routes.init(storage, config)
     models_routes.init(config)
     search_routes.init(storage)
+    experiment_routes.init(storage, config)
     ws_routes.init(storage, config)
 
     app.include_router(config_routes.router)
     app.include_router(chat_routes.router)
     app.include_router(models_routes.router)
     app.include_router(search_routes.router)
+    app.include_router(experiment_routes.router)
     app.include_router(ws_routes.router)
 
     @app.get("/api/health")

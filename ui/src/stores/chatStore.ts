@@ -18,6 +18,9 @@ export interface ModelConfig {
   max_tokens?: number | null;
   top_p?: number | null;
   extra_params: Record<string, unknown>;
+  response_format?: { type: string; json_schema?: Record<string, unknown> } | null;
+  tools?: Record<string, unknown>[] | null;
+  tool_choice?: string | { type: string; function: { name: string } } | null;
 }
 
 export interface ResponseMeta {
