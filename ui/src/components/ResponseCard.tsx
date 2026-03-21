@@ -1,10 +1,15 @@
-import { useState } from "react";
-import { ChartBar, CaretLeft, CaretRight } from "@phosphor-icons/react";
+import { useState, useCallback } from "react";
+import { ChartBar, CaretLeft, CaretRight, ChatText } from "@phosphor-icons/react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { CopyButton } from "./CopyButton";
 import { MarkdownContent } from "./MarkdownContent";
+import { AnnotationPopover } from "./AnnotationPopover";
+import { AnnotationReviewPopover } from "./AnnotationReviewPopover";
+import { useAnnotationStore } from "@/stores/annotationStore";
+import { extractQuoteSelector } from "@/lib/textSelector";
 import type { ResponseMeta } from "@/stores/chatStore";
+import type { Annotation } from "@/stores/annotationStore";
 
 interface Props {
   modelName: string;
@@ -14,6 +19,9 @@ interface Props {
   streaming?: boolean;
   streamingContent?: string;
   streamingTotal?: number;
+  messageId?: string;
+  chatroomId?: string;
+  chatId?: string;
 }
 
 function friendlyError(raw: string): { summary: string; full: string } {
@@ -36,14 +44,107 @@ export function ResponseCard({
   streaming,
   streamingContent,
   streamingTotal,
+  messageId,
+  chatroomId,
+  chatId,
 }: Props) {
   const [showDetails, setShowDetails] = useState(false);
+  const [selectionPopover, setSelectionPopover] = useState<{
+    position: { x: number; y: number };
+    selectedText: string;
+  } | null>(null);
+  const [reviewPopover, setReviewPopover] = useState<{
+    annotation: Annotation;
+    position: { x: number; y: number };
+  } | null>(null);
+
+  const { annotations, addAnnotation, updateAnnotation, deleteAnnotation } =
+    useAnnotationStore();
 
   const active = responses[activeIndex];
   const content = streaming ? (streamingContent ?? "") : (active?.content ?? "");
   const error = active?.error;
   const metadata = streaming ? undefined : active;
   const err = error ? friendlyError(content) : null;
+
+  // Get annotations for this specific response
+  const chatAnnotations = chatId ? annotations[chatId] || [] : [];
+  const responseAnnotations = chatAnnotations.filter(
+    (a) =>
+      a.message_id === messageId &&
+      a.model_id === active?.model_id &&
+      a.response_index === activeIndex
+  );
+
+  const handleMouseUp = useCallback((e: React.MouseEvent) => {
+    if (streaming || !messageId || !chatroomId || !chatId) return;
+    // Don't trigger when clicking inside annotation popover
+    if ((e.target as HTMLElement).closest("[data-annotation-popover]")) return;
+
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return;
+
+    const selectedText = selection.toString().trim();
+    if (!selectedText) return;
+
+    const range = selection.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+
+    setSelectionPopover({
+      position: { x: rect.left + rect.width / 2, y: rect.bottom + 4 },
+      selectedText,
+    });
+  }, [streaming, messageId, chatroomId, chatId]);
+
+  const handleAnnotationSubmit = async (
+    rating: "positive" | "negative",
+    comment: string
+  ) => {
+    if (!selectionPopover || !chatroomId || !chatId || !messageId || !active)
+      return;
+
+    const selector = extractQuoteSelector(content, selectionPopover.selectedText);
+    if (!selector) return;
+
+    await addAnnotation(chatroomId, chatId, {
+      message_id: messageId,
+      model_id: active.model_id,
+      response_index: activeIndex,
+      exact: selector.exact,
+      prefix: selector.prefix,
+      suffix: selector.suffix,
+      rating,
+      comment,
+    });
+
+    setSelectionPopover(null);
+    window.getSelection()?.removeAllRanges();
+  };
+
+  const handleAnnotationClick = useCallback(
+    (annotationId: string, rect: { x: number; y: number }) => {
+      const ann = responseAnnotations.find((a) => a.id === annotationId);
+      if (ann) {
+        setReviewPopover({ annotation: ann, position: rect });
+      }
+    },
+    [responseAnnotations]
+  );
+
+  const handleAnnotationUpdate = async (data: {
+    rating?: string;
+    comment?: string;
+  }) => {
+    if (!reviewPopover || !chatroomId || !chatId) return;
+    await updateAnnotation(chatroomId, chatId, reviewPopover.annotation.id, data);
+    setReviewPopover(null);
+  };
+
+  const handleAnnotationDelete = async () => {
+    if (!reviewPopover || !chatroomId || !chatId) return;
+    await deleteAnnotation(chatroomId, chatId, reviewPopover.annotation.id);
+    setReviewPopover(null);
+  };
 
   const inlineStats: string[] = [];
   if (metadata) {
@@ -67,7 +168,7 @@ export function ResponseCard({
             </Badge>
           )}
         </div>
-        <div className="p-3">
+        <div className="p-3" onMouseUp={handleMouseUp}>
           {err ? (
             <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 space-y-2">
               <div className="flex items-center gap-2">
@@ -91,7 +192,11 @@ export function ResponseCard({
               )}
             </div>
           ) : (
-            <MarkdownContent content={content || (streaming ? "" : "No response")} />
+            <MarkdownContent
+              content={content || (streaming ? "" : "No response")}
+              annotations={responseAnnotations}
+              onAnnotationClick={handleAnnotationClick}
+            />
           )}
         </div>
       </div>
@@ -113,6 +218,17 @@ export function ResponseCard({
                     metadata.tokens_per_sec != null ? `${metadata.tokens_per_sec} tok/s` : null,
                     metadata.cost === null || metadata.cost === undefined ? "cost: N/A" : `$${metadata.cost.toFixed(6)}`,
                   ].filter(Boolean).join(" · ")}
+                </TooltipContent>
+              </Tooltip>
+            )}
+            {responseAnnotations.length > 0 && (
+              <Tooltip>
+                <TooltipTrigger className="flex items-center gap-1 p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+                  <ChatText size={14} />
+                  <span className="text-xs tabular-nums">{responseAnnotations.length}</span>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {responseAnnotations.length} annotation{responseAnnotations.length !== 1 ? "s" : ""}
                 </TooltipContent>
               </Tooltip>
             )}
@@ -147,6 +263,26 @@ export function ResponseCard({
             {!error && content && <CopyButton text={content} size={14} />}
           </div>
         </div>
+      )}
+
+      {/* Selection popover for creating annotations */}
+      {selectionPopover && (
+        <AnnotationPopover
+          position={selectionPopover.position}
+          onSubmit={handleAnnotationSubmit}
+          onClose={() => setSelectionPopover(null)}
+        />
+      )}
+
+      {/* Review popover for existing annotations */}
+      {reviewPopover && (
+        <AnnotationReviewPopover
+          annotation={reviewPopover.annotation}
+          anchorRect={reviewPopover.position}
+          onUpdate={handleAnnotationUpdate}
+          onDelete={handleAnnotationDelete}
+          onClose={() => setReviewPopover(null)}
+        />
       )}
     </div>
   );

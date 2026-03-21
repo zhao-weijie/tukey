@@ -12,6 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { CaretDown, CaretUp, ArrowsClockwise } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { useAnnotationStore } from "@/stores/annotationStore";
 import type { Chatroom, Chat, ModelConfig as MC, ResponseMeta } from "@/stores/chatStore";
 
 function groupResponsesByModel(responses: ResponseMeta[]): Record<string, ResponseMeta[]> {
@@ -47,6 +48,7 @@ export function ChatRoom() {
   // Regenerate UI state: which turn_id has the inline form open
   const [regenTurnId, setRegenTurnId] = useState<string | null>(null);
   const [regenCount, setRegenCount] = useState(1);
+  const { fetchAnnotations } = useAnnotationStore();
 
   // Load chatroom meta when chatroom changes
   useEffect(() => {
@@ -67,6 +69,7 @@ export function ChatRoom() {
       setChat(c);
       setMessages(m);
       connect(activeChatroomId, activeChatId);
+      fetchAnnotations(activeChatroomId, activeChatId).catch(console.error);
     }).catch(console.error);
     return () => disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -277,6 +280,9 @@ export function ChatRoom() {
                         responses={grouped[mid]}
                         activeIndex={cyclingState[msg.id]?.[mid] ?? 0}
                         onIndexChange={(idx) => handleCyclingChange(msg.id, mid, idx)}
+                        messageId={msg.id}
+                        chatroomId={activeChatroomId!}
+                        chatId={activeChatId!}
                       />
                     ))}
                   </ResponseCarousel>

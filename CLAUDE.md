@@ -21,3 +21,8 @@
 - The overflow constraint chain must be unbroken from the root (`overflow-hidden`) through every flex container to the leaf content — one missing `min-w-0` or `overflow-hidden` lets content push the layout past the viewport
 - ResizeObserver + setState can create infinite loops if the state change triggers a layout change that re-fires the observer; always round/threshold observed values before setting state
 - ResponseCarousel uses fixed-width cards with horizontal scroll; card width is computed from container width and visible count
+
+## Frontend Components
+- Use shadcn components (`ui/src/components/ui/`) as the base for all new UI — don't build custom primitives
+- Add new shadcn components via `npx shadcn@latest add <component>` in `ui/`
+- Available: badge, button, dialog, input, label, popover, select, separator, slider, textarea, scroll-area, tooltip

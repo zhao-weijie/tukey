@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import uuid
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -210,3 +213,80 @@ class ChatroomImport(BaseModel):
 def import_chatroom(body: ChatroomImport):
     s, c = _get_deps()
     return ChatRoom.import_chatroom(s, c, body.data)
+
+
+# --- Chat annotation endpoints ---
+
+class AnnotationCreate(BaseModel):
+    message_id: str
+    model_id: str
+    response_index: int
+    exact: str
+    prefix: str
+    suffix: str
+    rating: str  # "positive" | "negative"
+    comment: str = ""
+
+
+class AnnotationUpdate(BaseModel):
+    rating: str | None = None
+    comment: str | None = None
+
+
+@router.post("/chatrooms/{chatroom_id}/chats/{chat_id}/annotations", status_code=201)
+def create_annotation(chatroom_id: str, chat_id: str, body: AnnotationCreate):
+    s, _ = _get_deps()
+    if chat_id not in s.list_chats(chatroom_id):
+        raise HTTPException(404, "Chat not found")
+    now = datetime.now(timezone.utc).isoformat()
+    annotation = {
+        "id": str(uuid.uuid4()),
+        "message_id": body.message_id,
+        "model_id": body.model_id,
+        "response_index": body.response_index,
+        "exact": body.exact,
+        "prefix": body.prefix,
+        "suffix": body.suffix,
+        "rating": body.rating,
+        "comment": body.comment,
+        "created_at": now,
+        "updated_at": now,
+    }
+    s.append_chat_annotation(chatroom_id, chat_id, annotation)
+    return annotation
+
+
+@router.get("/chatrooms/{chatroom_id}/chats/{chat_id}/annotations")
+def list_annotations(chatroom_id: str, chat_id: str):
+    s, _ = _get_deps()
+    if chat_id not in s.list_chats(chatroom_id):
+        raise HTTPException(404, "Chat not found")
+    return s.read_chat_annotations(chatroom_id, chat_id)
+
+
+@router.patch("/chatrooms/{chatroom_id}/chats/{chat_id}/annotations/{annotation_id}")
+def update_annotation(chatroom_id: str, chat_id: str, annotation_id: str, body: AnnotationUpdate):
+    s, _ = _get_deps()
+    if chat_id not in s.list_chats(chatroom_id):
+        raise HTTPException(404, "Chat not found")
+    annotations = s.read_chat_annotations(chatroom_id, chat_id)
+    for ann in annotations:
+        if ann["id"] == annotation_id:
+            updates = body.model_dump(exclude_none=True)
+            ann.update(updates)
+            ann["updated_at"] = datetime.now(timezone.utc).isoformat()
+            s.write_chat_annotations(chatroom_id, chat_id, annotations)
+            return ann
+    raise HTTPException(404, "Annotation not found")
+
+
+@router.delete("/chatrooms/{chatroom_id}/chats/{chat_id}/annotations/{annotation_id}", status_code=204)
+def delete_annotation(chatroom_id: str, chat_id: str, annotation_id: str):
+    s, _ = _get_deps()
+    if chat_id not in s.list_chats(chatroom_id):
+        raise HTTPException(404, "Chat not found")
+    annotations = s.read_chat_annotations(chatroom_id, chat_id)
+    updated = [a for a in annotations if a["id"] != annotation_id]
+    if len(updated) == len(annotations):
+        raise HTTPException(404, "Annotation not found")
+    s.write_chat_annotations(chatroom_id, chat_id, updated)

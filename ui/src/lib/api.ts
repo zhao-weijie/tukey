@@ -92,6 +92,24 @@ export const apiClient = {
   getAvailableModels: (providerId: string) =>
     api<{ id: string; name: string }[]>(`/api/models/providers/${providerId}/available`),
 
+  // Chat Annotations
+  listAnnotations: (chatroomId: string, chatId: string) =>
+    api<any[]>(`/api/chat/chatrooms/${chatroomId}/chats/${chatId}/annotations`),
+  createAnnotation: (chatroomId: string, chatId: string, data: any) =>
+    api<any>(`/api/chat/chatrooms/${chatroomId}/chats/${chatId}/annotations`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateAnnotation: (chatroomId: string, chatId: string, annotationId: string, data: any) =>
+    api<any>(`/api/chat/chatrooms/${chatroomId}/chats/${chatId}/annotations/${annotationId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  deleteAnnotation: (chatroomId: string, chatId: string, annotationId: string) =>
+    api<void>(`/api/chat/chatrooms/${chatroomId}/chats/${chatId}/annotations/${annotationId}`, {
+      method: "DELETE",
+    }),
+
   // Health
   getHealth: () => api<{ status: string; data_dir: string }>("/api/health"),
 };

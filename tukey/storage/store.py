@@ -126,6 +126,17 @@ class Storage:
     def write_chat_messages(self, chatroom_id: str, chat_id: str, messages: list[dict[str, Any]]) -> None:
         self.write_jsonl(self.chat_dir(chatroom_id, chat_id) / "messages.jsonl", messages)
 
+    # --- Chat annotation helpers ---
+
+    def append_chat_annotation(self, chatroom_id: str, chat_id: str, annotation: dict[str, Any]) -> None:
+        self.append_jsonl(self.chat_dir(chatroom_id, chat_id) / "annotations.jsonl", annotation)
+
+    def read_chat_annotations(self, chatroom_id: str, chat_id: str) -> list[dict[str, Any]]:
+        return self.read_jsonl(self.chat_dir(chatroom_id, chat_id) / "annotations.jsonl")
+
+    def write_chat_annotations(self, chatroom_id: str, chat_id: str, annotations: list[dict[str, Any]]) -> None:
+        self.write_jsonl(self.chat_dir(chatroom_id, chat_id) / "annotations.jsonl", annotations)
+
     # --- Experiment helpers ---
 
     def experiment_dir(self, experiment_id: str) -> Path:

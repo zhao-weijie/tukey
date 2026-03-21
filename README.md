@@ -18,6 +18,7 @@ Send a prompt once, get parallel streaming responses from every model you select
 - **Per-response metadata** — tokens, cost, duration, tok/s for every response
 - **Local-first** — all data stored in `~/.tukey/`, nothing leaves your machine except API calls
 - **Experiments** — named test suites with batch execution, human annotation, and reproducible manifests
+- **Text annotation** — select text in any response to rate and comment on specific sections; highlights persist across page reloads
 - **Search** — full-text search across all chatrooms, chats, and messages
 - **Import/export** — per-chatroom JSON export for backup or transfer
 
@@ -68,6 +69,17 @@ Keys are stored in `~/.tukey/config.json`. They are never sent anywhere except t
 3. Configure each model's system prompt, temperature, and other settings (or use "Apply to all")
 4. Type a prompt and send — responses stream in side-by-side
 5. Toggle the metadata bar to see cost, speed, and token counts per response
+
+### Annotations
+
+Select any text in a completed response to annotate it:
+
+1. Highlight a text range in a response card
+2. Rate it thumbs up or thumbs down, add an optional comment
+3. Annotations appear as colored highlights (green = positive, red = negative)
+4. Click a highlight to review, edit, or delete the annotation
+
+Annotations are stored per-response and survive page refresh.
 
 ### Experiments
 
