@@ -71,9 +71,9 @@ export function ResponseCard({
   const chatAnnotations = chatId ? annotations[chatId] || [] : [];
   const responseAnnotations = chatAnnotations.filter(
     (a) =>
-      a.message_id === messageId &&
-      a.model_id === active?.model_id &&
-      a.response_index === activeIndex
+      a.target.source.message_id === messageId &&
+      a.target.source.model_id === active?.model_id &&
+      a.target.source.response_index === activeIndex
   );
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
@@ -107,12 +107,17 @@ export function ResponseCard({
     if (!selector) return;
 
     await addAnnotation(chatroomId, chatId, {
-      message_id: messageId,
-      model_id: active.model_id,
-      response_index: activeIndex,
-      exact: selector.exact,
-      prefix: selector.prefix,
-      suffix: selector.suffix,
+      target: {
+        source: {
+          message_id: messageId,
+          model_id: active.model_id,
+          response_index: activeIndex,
+        },
+        selector: {
+          type: "TextQuoteSelector" as const,
+          ...selector,
+        },
+      },
       rating,
       comment,
     });

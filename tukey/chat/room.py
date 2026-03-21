@@ -184,6 +184,7 @@ class ChatRoom:
             if not chat_meta:
                 continue
             messages = storage.read_chat_messages(chatroom_id, cid)
+            annotations = storage.read_chat_annotations(chatroom_id, cid)
             chat_data = {
                 "name": chat_meta.get("name"),
                 "models_snapshot": chat_meta.get("models_snapshot", []),
@@ -191,6 +192,7 @@ class ChatRoom:
                 "runtime": chat_meta.get("runtime", {}),
                 "created_at": chat_meta.get("created_at"),
                 "messages": messages,
+                "annotations": annotations,
             }
             chats_export.append(chat_data)
         return {
@@ -236,6 +238,9 @@ class ChatRoom:
             for msg in chat_data.get("messages", []):
                 new_msg = {**msg, "id": str(uuid.uuid4())}
                 storage.append_chat_message(room.chatroom_id, chat_id, new_msg)
+            for ann in chat_data.get("annotations", []):
+                new_ann = {**ann, "id": str(uuid.uuid4())}
+                storage.append_chat_annotation(room.chatroom_id, chat_id, new_ann)
         return room_meta
 
     # --- Provider ---

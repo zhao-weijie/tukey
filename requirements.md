@@ -41,7 +41,7 @@ Programmatic test generation is powerful but dangerous without domain expert inv
 - SUS6 Copy responses — copy full response (button in card header) and copy individual fenced code blocks (hover button)
 - SUS7 Improve readability — LLM responses rendered as markdown (headings, lists, tables, code blocks with syntax highlighting); user message newlines preserved via whitespace-pre-wrap
 
-- US5.2 Human annotation (chat) — text-range annotation on chat response cards: select text → rate (thumbs up/down) + comment → highlights persist to backend (annotations.jsonl). Covers US5.2.2–5.2.8. US5.2.1 replaced with automatic popover on selection; US5.2.9 deferred.
+- US5.2 Human annotation (chat) — text-range annotation on chat response cards: select text → rate (thumbs up/down) + comment → highlights persist to backend (annotations.jsonl). Schema uses W3C-aligned nested target (target.source + target.selector with TextQuoteSelector). Annotations included in chatroom export/import. Covers US5.2.2–5.2.8. US5.2.1 replaced with automatic popover on selection; US5.2.9 deferred.
 
 ### In progress
 - US5.1, 5.3, 5.4 Experiment framework — backend complete (experiment CRUD, test cases, run execution with multi-turn + concurrency, annotations, summary, REST API, SDK). Frontend UI not yet built.

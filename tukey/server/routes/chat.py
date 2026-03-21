@@ -217,13 +217,26 @@ def import_chatroom(body: ChatroomImport):
 
 # --- Chat annotation endpoints ---
 
-class AnnotationCreate(BaseModel):
-    message_id: str
-    model_id: str
-    response_index: int
+class AnnotationSelector(BaseModel):
+    type: str = "TextQuoteSelector"
     exact: str
     prefix: str
     suffix: str
+
+
+class AnnotationSource(BaseModel):
+    message_id: str
+    model_id: str
+    response_index: int
+
+
+class AnnotationTarget(BaseModel):
+    source: AnnotationSource
+    selector: AnnotationSelector
+
+
+class AnnotationCreate(BaseModel):
+    target: AnnotationTarget
     rating: str  # "positive" | "negative"
     comment: str = ""
 
@@ -241,16 +254,14 @@ def create_annotation(chatroom_id: str, chat_id: str, body: AnnotationCreate):
     now = datetime.now(timezone.utc).isoformat()
     annotation = {
         "id": str(uuid.uuid4()),
-        "message_id": body.message_id,
-        "model_id": body.model_id,
-        "response_index": body.response_index,
-        "exact": body.exact,
-        "prefix": body.prefix,
-        "suffix": body.suffix,
+        "target": {
+            "source": body.target.source.model_dump(),
+            "selector": body.target.selector.model_dump(),
+        },
         "rating": body.rating,
         "comment": body.comment,
-        "created_at": now,
-        "updated_at": now,
+        "created": now,
+        "modified": now,
     }
     s.append_chat_annotation(chatroom_id, chat_id, annotation)
     return annotation
@@ -274,7 +285,7 @@ def update_annotation(chatroom_id: str, chat_id: str, annotation_id: str, body: 
         if ann["id"] == annotation_id:
             updates = body.model_dump(exclude_none=True)
             ann.update(updates)
-            ann["updated_at"] = datetime.now(timezone.utc).isoformat()
+            ann["modified"] = datetime.now(timezone.utc).isoformat()
             s.write_chat_annotations(chatroom_id, chat_id, annotations)
             return ann
     raise HTTPException(404, "Annotation not found")

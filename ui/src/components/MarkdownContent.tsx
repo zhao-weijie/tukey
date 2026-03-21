@@ -119,7 +119,7 @@ export function MarkdownContent({ content, annotations, onAnnotationClick }: Pro
     for (const ann of annotations) {
       const className =
         ann.rating === "positive" ? "annotation-positive" : "annotation-negative";
-      highlightText(el, ann.exact, className, ann.id);
+      highlightText(el, ann.target.selector.exact, className, ann.id);
     }
 
     // Attach click handlers

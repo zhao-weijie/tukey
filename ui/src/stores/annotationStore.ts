@@ -1,18 +1,31 @@
 import { create } from "zustand";
 import { apiClient } from "@/lib/api";
 
-export interface Annotation {
-  id: string;
-  message_id: string;
-  model_id: string;
-  response_index: number;
+export interface AnnotationSelector {
+  type: "TextQuoteSelector";
   exact: string;
   prefix: string;
   suffix: string;
+}
+
+export interface AnnotationSource {
+  message_id: string;
+  model_id: string;
+  response_index: number;
+}
+
+export interface AnnotationTarget {
+  source: AnnotationSource;
+  selector: AnnotationSelector;
+}
+
+export interface Annotation {
+  id: string;
+  target: AnnotationTarget;
   rating: "positive" | "negative";
   comment: string;
-  created_at: string;
-  updated_at: string;
+  created: string;
+  modified: string;
 }
 
 interface AnnotationState {
@@ -22,7 +35,7 @@ interface AnnotationState {
   addAnnotation: (
     chatroomId: string,
     chatId: string,
-    data: Omit<Annotation, "id" | "created_at" | "updated_at">
+    data: Omit<Annotation, "id" | "created" | "modified">
   ) => Promise<Annotation>;
   updateAnnotation: (
     chatroomId: string,
