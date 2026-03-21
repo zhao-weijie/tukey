@@ -78,15 +78,30 @@ For systematic evaluation beyond ad-hoc chat:
 3. Have domain experts annotate results with pass/fail judgments and notes
 4. Export the full manifest for reproducibility
 
-### Python SDK
+### REST API
 
-Drive Tukey programmatically for batch testing:
+Drive Tukey programmatically via its REST API. Use any HTTP client:
 
 ```python
-from tukey.sdk import TukeyClient
+import httpx
 
-client = TukeyClient("http://localhost:8000")
+BASE = "http://localhost:8000"
+
+with httpx.Client(timeout=120) as client:
+    # Create a chat session in an existing chatroom
+    chat = client.post(f"{BASE}/api/chat/chatrooms/{chatroom_id}/chats").json()
+
+    # Send a message — fans out to all configured models concurrently
+    turn = client.post(
+        f"{BASE}/api/chat/chatrooms/{chatroom_id}/chats/{chat['id']}/messages",
+        json={"content": "Your prompt here"},
+    ).json()
+
+    for response in turn["responses"]:
+        print(response["model_id"], response["content"])
 ```
+
+See `GET /api/health` for a quick sanity check. Full endpoint reference: start the server and visit `http://localhost:8000/docs`.
 
 ## Contributing
 
