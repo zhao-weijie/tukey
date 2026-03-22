@@ -67,9 +67,13 @@ def create_app(data_dir: str | None = None) -> FastAPI:
     if UI_DIST.exists():
         app.mount("/assets", StaticFiles(directory=UI_DIST / "assets"), name="assets")
 
-        @app.get("/favicon.svg")
-        async def favicon():
-            return FileResponse(UI_DIST / "favicon.svg")
+        @app.get("/favicon-light.svg")
+        async def favicon_light():
+            return FileResponse(UI_DIST / "favicon-light.svg")
+
+        @app.get("/favicon-dark.svg")
+        async def favicon_dark():
+            return FileResponse(UI_DIST / "favicon-dark.svg")
 
         @app.get("/icons.svg")
         async def icons():
