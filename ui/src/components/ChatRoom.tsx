@@ -26,7 +26,12 @@ function groupResponsesByModel(responses: ResponseMeta[]): Record<string, Respon
   return groups;
 }
 
-export function ChatRoom() {
+interface ChatRoomProps {
+  demoPrompt?: string | null;
+  onDemoPromptUsed?: () => void;
+}
+
+export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
   const {
     activeChatroomId, activeChatId,
     messages, setMessages, streaming,
@@ -49,6 +54,14 @@ export function ChatRoom() {
   const [regenTurnId, setRegenTurnId] = useState<string | null>(null);
   const [regenCount, setRegenCount] = useState(1);
   const { fetchAnnotations } = useAnnotationStore();
+
+  // Pre-fill demo prompt from onboarding
+  useEffect(() => {
+    if (demoPrompt && activeChatId) {
+      setInput(demoPrompt);
+      onDemoPromptUsed?.();
+    }
+  }, [demoPrompt, activeChatId]);
 
   // Load chatroom meta when chatroom changes
   useEffect(() => {

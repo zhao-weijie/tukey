@@ -5,9 +5,9 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 import httpx
-import litellm
 
 from tukey.config import ConfigManager
+from tukey.providers import model_registry
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
@@ -48,30 +48,11 @@ def get_available_models(provider_id: str):
         except Exception:
             return []
     else:
-        # Native provider: use litellm's model list
-        provider_type = prov.get("provider", "openai")
-        try:
-            models = litellm.models_by_provider.get(provider_type, [])
-            return [{"id": m, "name": m} for m in sorted(models)]
-        except Exception:
-            return []
+        # Native provider without gateway — no model listing available
+        return []
 
 
 @router.get("/{model_id:path}/capabilities")
 def get_model_capabilities(model_id: str):
-    """Return capability flags for a model via litellm."""
-    try:
-        info = litellm.get_model_info(model_id)
-        return {
-            "supports_reasoning": info.get("supports_reasoning", False),
-            "supports_vision": info.get("supports_vision", False),
-            "max_tokens": info.get("max_tokens"),
-            "max_input_tokens": info.get("max_input_tokens"),
-        }
-    except Exception:
-        return {
-            "supports_reasoning": False,
-            "supports_vision": False,
-            "max_tokens": None,
-            "max_input_tokens": None,
-        }
+    """Return capability flags for a model via the model registry."""
+    return model_registry.get_capabilities(model_id)

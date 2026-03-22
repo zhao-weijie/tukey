@@ -1,3 +1,3 @@
-from .litellm_provider import LiteLLMProvider
+from .openai_provider import OpenAICompatibleProvider
 
-__all__ = ["LiteLLMProvider"]
+__all__ = ["OpenAICompatibleProvider"]

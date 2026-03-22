@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import uuid
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -76,21 +79,90 @@ def delete_provider(provider_id: str):
 
 
 @router.post("/providers/{provider_id}/test")
-def test_provider(provider_id: str):
-    """Minimal litellm call to verify provider credentials."""
+async def test_provider(provider_id: str):
+    """Minimal API call to verify provider credentials."""
+    import httpx
+
     p = _cm().get_provider(provider_id)
     if not p:
         raise HTTPException(404, "Provider not found")
+    base = (p.get("base_url") or "https://api.openai.com/v1").rstrip("/")
     try:
-        import litellm
-
-        litellm.completion(
-            model="openai/gpt-4o-mini" if p.get("base_url") else "gpt-4o-mini",
-            messages=[{"role": "user", "content": "hi"}],
-            max_tokens=1,
-            api_key=p["api_key"],
-            api_base=p.get("base_url"),
-        )
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                f"{base}/chat/completions",
+                json={
+                    "model": "gpt-4o-mini",
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "max_tokens": 1,
+                },
+                headers={
+                    "Authorization": f"Bearer {p['api_key']}",
+                    "Content-Type": "application/json",
+                },
+                timeout=10.0,
+            )
+            r.raise_for_status()
         return {"ok": True}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+class QuickSetupRequest(BaseModel):
+    api_key: str
+    provider: str = "openrouter"
+    base_url: str | None = None
+    display_name: str | None = None
+    models: list[dict] = []
+    chatroom_name: str = "My First Comparison"
+
+
+@router.post("/quick-setup", status_code=201)
+def quick_setup(body: QuickSetupRequest):
+    """One-call onboarding: create provider + chatroom with models."""
+    from tukey.chat.room import ChatRoom
+    from tukey.storage import Storage
+
+    cm = _cm()
+
+    # 1. Create provider
+    provider = cm.add_provider(
+        provider=body.provider,
+        api_key=body.api_key,
+        base_url=body.base_url,
+        display_name=body.display_name or body.provider.title(),
+    )
+    provider_id = provider["id"]
+
+    # 2. Create chatroom with models attached to this provider
+    # Import storage from the app's init — we need it for ChatRoom
+    # Access via the chat route's storage (shared instance)
+    from tukey.server.routes import chat as chat_routes
+    storage, _ = chat_routes._get_deps()
+
+    models = []
+    for m in body.models:
+        models.append({
+            "id": str(uuid.uuid4()),
+            "provider_id": provider_id,
+            "model_id": m.get("model_id", ""),
+            "display_name": m.get("display_name", m.get("model_id", "")),
+            "system_prompt": m.get("system_prompt", ""),
+            "temperature": m.get("temperature", 1.0),
+            "max_tokens": m.get("max_tokens"),
+            "top_p": m.get("top_p"),
+            "extra_params": m.get("extra_params", {}),
+        })
+
+    room = ChatRoom(storage, cm)
+    chatroom = room.create(name=body.chatroom_name, models=models)
+
+    # 3. Create a first chat in the chatroom
+    room_with_id = ChatRoom(storage, cm, chatroom["id"])
+    chat = room_with_id.create_chat(name="Chat 1")
+
+    return {
+        "provider": provider,
+        "chatroom": chatroom,
+        "chat": chat,
+    }

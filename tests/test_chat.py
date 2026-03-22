@@ -135,7 +135,7 @@ def test_chat_create_snapshots_providers(storage, config):
     assert "runtime" in chat
     rt = chat["runtime"]
     assert "tukey_version" in rt
-    assert "litellm_version" in rt
+    assert "httpx_version" in rt
     assert "python_version" in rt
 
 

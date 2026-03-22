@@ -12,7 +12,7 @@ from typing import Any
 
 import tukey
 from tukey.config import ConfigManager
-from tukey.providers.litellm_provider import LiteLLMProvider
+from tukey.providers.openai_provider import OpenAICompatibleProvider
 from tukey.storage import Storage
 
 
@@ -135,7 +135,7 @@ class Experiment:
 
         runtime = {
             "tukey_version": tukey.__version__,
-            "litellm_version": pkg_version("litellm"),
+            "httpx_version": pkg_version("httpx"),
             "python_version": sys.version,
         }
 
@@ -309,11 +309,11 @@ class Experiment:
 
     # --- Helpers ---
 
-    def _build_provider(self, provider_id: str) -> LiteLLMProvider:
+    def _build_provider(self, provider_id: str) -> OpenAICompatibleProvider:
         prov = self.config.get_provider(provider_id)
         if not prov:
             raise ValueError(f"Provider {provider_id} not found")
-        return LiteLLMProvider(
+        return OpenAICompatibleProvider(
             api_key=prov.get("api_key"),
             base_url=prov.get("base_url"),
             provider_type=prov.get("provider"),

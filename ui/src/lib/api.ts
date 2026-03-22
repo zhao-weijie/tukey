@@ -110,6 +110,20 @@ export const apiClient = {
       method: "DELETE",
     }),
 
+  // Quick setup (onboarding)
+  quickSetup: (data: {
+    api_key: string;
+    provider?: string;
+    base_url?: string | null;
+    display_name?: string | null;
+    models?: { model_id: string; display_name?: string }[];
+    chatroom_name?: string;
+  }) =>
+    api<{ provider: any; chatroom: any; chat: any }>("/api/config/quick-setup", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
   // Health
   getHealth: () => api<{ status: string; data_dir: string }>("/api/health"),
 };
