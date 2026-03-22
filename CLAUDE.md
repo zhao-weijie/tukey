@@ -8,6 +8,7 @@
 ## Package Management
 - Use `uv` for all Python dependency management (not pip, not poetry)
 - `uv sync` to install, `uv run pytest` to run tests, etc.
+- Primary languages: Python and TypeScript. Markdown and YAML for docs/config. Answer from existing knowledge — do not web search for library choices unless asked.
 
 ## LiteLLM
 - Models routed through an OpenAI-compatible gateway need the `openai/` prefix (e.g. `openai/claude-4.6-sonnet`, `openai/gemini-2.5-pro`)
