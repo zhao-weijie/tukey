@@ -46,8 +46,10 @@ Programmatic test generation is powerful but dangerous without domain expert inv
 ### In progress
 - US5.1, 5.3, 5.4 Experiment framework — backend complete (experiment CRUD, test cases, run execution with multi-turn + concurrency, annotations, summary, REST API, SDK). Frontend UI not yet built.
 
+### In progress
+- US6 Synthesis — data contract (`ExperimentBundle`) and tool protocol (`SynthesisTool`) complete. Built-in tools (`basic_stats`, `tfidf`) working. CLI supports both chatrooms and experiments. Frontend UI not yet built.
+
 ### Not started
-- US6 Synthesizer
 - SUS1–SUS5 Stretch stories (except SUS6, SUS7)
 
 ## Core user stories
@@ -128,8 +130,22 @@ As a team, we want domain experts and developers to work from the same experimen
 ### US5.4 Experiment brief
 As a team lead, I want every experiment to require a lightweight brief — stating the decision to be made, the evaluation criteria, and who will judge — so that the team aligns on what "good" looks like before seeing any model outputs, preventing post-hoc rationalization.
 
-### US6 Synthesizer
-As a user, I want to select a completed experiment — its transcripts, human annotations, and metadata — and feed it to an LLM synthesizer that describes how responses differ, identifies patterns in failures, and highlights tradeoffs across models — without declaring a winner, so that the team can make the final judgment informed by analysis rather than delegating the decision to a model.
+### US6 Synthesis
+As a user, I want to run composable analysis tools against a completed experiment or chatroom — its responses, human annotations, and metadata — so that I can understand how models differ, identify patterns, and highlight tradeoffs without the tool prescribing which analysis technique to use.
+
+**Design philosophy:** Synthesis is plumbing, not opinion. Different tasks need different analysis — TF-IDF for structured extraction, embeddings for open-ended text, LLM narration for qualitative summaries, generative remix for combining the best elements. Tukey provides:
+
+1. **A data contract** (`ExperimentBundle`) — a structured snapshot of everything an analysis tool needs (responses, annotations, model configs, operational metrics), built from either experiments or chatrooms. Tools never touch storage directly.
+2. **A tool protocol** (`SynthesisTool`) — any callable that receives an `ExperimentBundle` and returns structured `SynthesisResult` sections (text, tables, matrices, JSON). No side effects.
+3. **Built-in tools as examples** — `basic_stats` (per-model token/word/cost/latency counts) and `tfidf` (vocabulary-level similarity) ship as reference implementations. They are not privileged — user-defined tools use the same interface.
+
+**What Tukey does not do:** prescribe which NLP technique to use, auto-classify prompt types, declare winners, or collapse distinct evaluation dimensions into a single score.
+
+**Both data sources are first-class:**
+- **Chatrooms** — exploratory, interactive comparison. This is where early-stage evaluation happens naturally.
+- **Experiments** — structured, reproducible test suites with formal runs and annotations.
+
+The synthesis interface works identically with both.
 
 ## Stretch user stories
 
