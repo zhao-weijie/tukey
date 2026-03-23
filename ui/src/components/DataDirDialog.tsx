@@ -20,7 +20,21 @@ interface DataDirDialogProps {
 export function DataDirDialog({ open, onOpenChange, currentDir, onSwitch }: DataDirDialogProps) {
   const [newDir, setNewDir] = useState("");
   const [switching, setSwitching] = useState(false);
+  const [browsing, setBrowsing] = useState(false);
   const [error, setError] = useState("");
+
+  const handleBrowse = async () => {
+    setBrowsing(true);
+    setError("");
+    try {
+      const res = await apiClient.browseDir(currentDir);
+      if (res.selected) setNewDir(res.selected);
+    } catch (e: any) {
+      setError(e.message || "Failed to open folder picker");
+    } finally {
+      setBrowsing(false);
+    }
+  };
 
   const handleSwitch = async () => {
     const dir = newDir.trim();
@@ -52,13 +66,24 @@ export function DataDirDialog({ open, onOpenChange, currentDir, onSwitch }: Data
           </div>
           <div>
             <Label className="text-xs">Switch to a new directory</Label>
-            <Input
-              value={newDir}
-              onChange={(e) => setNewDir(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSwitch()}
-              placeholder="C:\Users\you\.tukey-project"
-              className="h-8 text-sm mt-1 font-mono"
-            />
+            <div className="flex gap-2 mt-1">
+              <Input
+                value={newDir}
+                onChange={(e) => setNewDir(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSwitch()}
+                placeholder="C:\Users\you\.tukey-project"
+                className="h-8 text-sm font-mono"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleBrowse}
+                disabled={browsing}
+                className="h-8 shrink-0"
+              >
+                {browsing ? "..." : "Browse"}
+              </Button>
+            </div>
           </div>
           <p className="text-[11px] text-muted-foreground">
             Switching will load chatrooms and providers from the new directory. Active chats will be disconnected.

@@ -23,21 +23,15 @@ interface Props {
     providers: any[];
     demoPrompt: string;
   }) => void;
+  onSkip: () => void;
 }
 
-type Step = "welcome" | "openrouter" | "custom" | "setting-up";
+type Step = "welcome" | "openrouter" | "setting-up";
 
-export function WelcomeSetup({ onComplete }: Props) {
+export function WelcomeSetup({ onComplete, onSkip }: Props) {
   const [step, setStep] = useState<Step>("welcome");
   const [apiKey, setApiKey] = useState("");
   const [error, setError] = useState("");
-
-  // Custom provider state
-  const [customProvider, setCustomProvider] = useState("openai");
-  const [customKey, setCustomKey] = useState("");
-  const [customBaseUrl, setCustomBaseUrl] = useState("");
-  const [customDisplayName, setCustomDisplayName] = useState("");
-  const [customModelId, setCustomModelId] = useState("");
 
   const handleOpenRouterSetup = async () => {
     if (!apiKey.trim()) return;
@@ -63,35 +57,6 @@ export function WelcomeSetup({ onComplete }: Props) {
     } catch (e: any) {
       setError(e.message || "Setup failed. Check your API key and try again.");
       setStep("openrouter");
-
-    }
-  };
-
-  const handleCustomSetup = async () => {
-    if (!customKey.trim() || !customModelId.trim()) return;
-    setError("");
-
-    setStep("setting-up");
-    try {
-      const result = await apiClient.quickSetup({
-        api_key: customKey.trim(),
-        provider: customProvider.trim(),
-        base_url: customBaseUrl.trim() || null,
-        display_name: customDisplayName.trim() || null,
-        models: [{ model_id: customModelId.trim(), display_name: customModelId.trim() }],
-        chatroom_name: "My First Comparison",
-      });
-      const providers = await apiClient.listProviders();
-      onComplete({
-        chatroomId: result.chatroom.id,
-        chatId: result.chat.id,
-        providers,
-        demoPrompt: DEMO_PROMPT,
-      });
-    } catch (e: any) {
-      setError(e.message || "Setup failed. Check your credentials and try again.");
-      setStep("custom");
-
     }
   };
 
@@ -187,61 +152,6 @@ export function WelcomeSetup({ onComplete }: Props) {
     );
   }
 
-  if (step === "custom") {
-    return (
-      <div className="flex-1 flex items-center justify-center p-4">
-        <div className="max-w-md w-full space-y-6">
-          <div>
-            <button
-              onClick={() => setStep("welcome")}
-              className="text-sm text-muted-foreground hover:text-foreground mb-4 inline-block"
-            >
-              &larr; Back
-            </button>
-            <h2 className="text-xl font-semibold">Add Your Provider</h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Connect OpenAI, Anthropic, Google, or any OpenAI-compatible API.
-            </p>
-          </div>
-
-          <div className="space-y-3">
-            <div>
-              <Label className="text-xs">Provider Type</Label>
-              <Input value={customProvider} onChange={(e) => setCustomProvider(e.target.value)}
-                placeholder="openai" className="h-8 text-sm mt-1" />
-            </div>
-            <div>
-              <Label className="text-xs">API Key</Label>
-              <Input value={customKey} onChange={(e) => setCustomKey(e.target.value)}
-                type="password" placeholder="sk-..." className="h-8 text-sm mt-1" autoFocus />
-            </div>
-            <div>
-              <Label className="text-xs">Base URL (optional)</Label>
-              <Input value={customBaseUrl} onChange={(e) => setCustomBaseUrl(e.target.value)}
-                placeholder="https://api.openai.com/v1" className="h-8 text-sm mt-1" />
-            </div>
-            <div>
-              <Label className="text-xs">Display Name (optional)</Label>
-              <Input value={customDisplayName} onChange={(e) => setCustomDisplayName(e.target.value)}
-                placeholder="My OpenAI" className="h-8 text-sm mt-1" />
-            </div>
-            <div>
-              <Label className="text-xs">Model ID</Label>
-              <Input value={customModelId} onChange={(e) => setCustomModelId(e.target.value)}
-                placeholder="gpt-4o" className="h-8 text-sm mt-1" />
-            </div>
-
-            {error && <p className="text-sm text-destructive">{error}</p>}
-
-            <Button onClick={handleCustomSetup} disabled={!customKey.trim() || !customModelId.trim()} className="w-full">
-              Connect & Start Comparing
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // Welcome step
   return (
     <div className="flex-1 flex items-center justify-center p-4">
@@ -274,7 +184,7 @@ export function WelcomeSetup({ onComplete }: Props) {
 
         <Button
           variant="outline"
-          onClick={() => setStep("custom")}
+          onClick={onSkip}
           className="mx-auto"
         >
           I already have API keys

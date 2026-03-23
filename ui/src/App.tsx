@@ -10,6 +10,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(true);
   const [showWelcome, setShowWelcome] = useState(false);
+  const [providerDialogOpen, setProviderDialogOpen] = useState(false);
   const { setProviders, setChatrooms, setActiveChatroom, setChats, setActiveChat } = useChatStore();
   const [demoPrompt, setDemoPrompt] = useState<string | null>(null);
 
@@ -42,6 +43,11 @@ export default function App() {
     setShowWelcome(false);
   };
 
+  const handleSkipToProviders = () => {
+    setShowWelcome(false);
+    setProviderDialogOpen(true);
+  };
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background text-foreground">
@@ -50,21 +56,20 @@ export default function App() {
     );
   }
 
-  if (showWelcome) {
-    return (
-      <TooltipProvider>
-        <div className="flex h-screen overflow-hidden bg-background text-foreground">
-          <WelcomeSetup onComplete={handleSetupComplete} />
-        </div>
-      </TooltipProvider>
-    );
-  }
-
   return (
     <TooltipProvider>
       <div className="flex h-screen overflow-hidden bg-background text-foreground">
-        <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen((o) => !o)} />
-        <ChatRoom demoPrompt={demoPrompt} onDemoPromptUsed={() => setDemoPrompt(null)} />
+        <Sidebar
+          open={sidebarOpen}
+          onToggle={() => setSidebarOpen((o) => !o)}
+          providerDialogOpen={providerDialogOpen}
+          onProviderDialogOpenChange={setProviderDialogOpen}
+        />
+        {showWelcome ? (
+          <WelcomeSetup onComplete={handleSetupComplete} onSkip={handleSkipToProviders} />
+        ) : (
+          <ChatRoom demoPrompt={demoPrompt} onDemoPromptUsed={() => setDemoPrompt(null)} />
+        )}
       </div>
     </TooltipProvider>
   );

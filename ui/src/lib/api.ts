@@ -128,6 +128,11 @@ export const apiClient = {
   getHealth: () => api<{ status: string; data_dir: string }>("/api/health"),
 
   // Data directory
+  browseDir: (currentDir?: string) =>
+    api<{ selected: string | null }>("/api/config/browse-dir", {
+      method: "POST",
+      body: JSON.stringify(currentDir ? { data_dir: currentDir } : {}),
+    }),
   setDataDir: (data_dir: string) =>
     api<{ status: string; data_dir: string }>("/api/config/data-dir", {
       method: "POST",

@@ -16,10 +16,17 @@ import type { Provider } from "@/stores/chatStore";
 interface Props {
   providers: Provider[];
   onUpdate: (providers: Provider[]) => void;
+  externalOpen?: boolean;
+  onExternalOpenChange?: (open: boolean) => void;
 }
 
-export function ProviderSetup({ providers, onUpdate }: Props) {
-  const [open, setOpen] = useState(false);
+export function ProviderSetup({ providers, onUpdate, externalOpen, onExternalOpenChange }: Props) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = externalOpen ?? internalOpen;
+  const setOpen = (v: boolean) => {
+    onExternalOpenChange?.(v);
+    setInternalOpen(v);
+  };
   const [provider, setProvider] = useState("openai");
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");

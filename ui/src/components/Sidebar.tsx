@@ -32,9 +32,11 @@ function useMediaQuery(query: string): boolean {
 interface SidebarProps {
   open: boolean;
   onToggle: () => void;
+  providerDialogOpen?: boolean;
+  onProviderDialogOpenChange?: (open: boolean) => void;
 }
 
-export function Sidebar({ open, onToggle }: SidebarProps) {
+export function Sidebar({ open, onToggle, providerDialogOpen, onProviderDialogOpenChange }: SidebarProps) {
   const isSmallScreen = useMediaQuery("(max-width: 767px)");
   const {
     chatrooms, setChatrooms,
@@ -240,7 +242,7 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
               <div className="h-8 rounded-md bg-muted/40 animate-pulse mx-1" />
             </>
           )}
-          {chatrooms.map((cr) => (
+{chatrooms.map((cr) => (
             <ChatroomItem
               key={cr.id}
               chatroom={cr}
@@ -263,7 +265,12 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
       </ScrollArea>
       <Separator />
       <div className="p-2 space-y-1.5">
-        <ProviderSetup providers={providers} onUpdate={setProviders} />
+        <ProviderSetup
+          providers={providers}
+          onUpdate={setProviders}
+          externalOpen={providerDialogOpen}
+          onExternalOpenChange={onProviderDialogOpenChange}
+        />
         {dataDir && (
           <div
             className="flex items-center gap-1.5 px-1 py-0.5 rounded-md text-[10px] text-muted-foreground hover:text-foreground hover:bg-accent/50 cursor-pointer transition-colors"

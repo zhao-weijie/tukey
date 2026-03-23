@@ -86,6 +86,41 @@ def create_app(data_dir: str | None = None) -> FastAPI:
     def health():
         return {"status": "ok", "data_dir": str(state.storage.data_dir)}
 
+    @app.post("/api/config/browse-dir")
+    def browse_directory(body: DataDirRequest | None = None):
+        """Open a native folder picker dialog and return the selected path."""
+        import threading, queue
+
+        initial_dir = None
+        if body and body.data_dir.strip():
+            p = Path(body.data_dir.strip())
+            if p.is_dir():
+                initial_dir = str(p)
+
+        result_q: queue.Queue[str] = queue.Queue()
+
+        def _pick():
+            import tkinter as tk
+            from tkinter import filedialog
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            chosen = filedialog.askdirectory(
+                title="Select Data Directory",
+                initialdir=initial_dir or str(state.storage.data_dir),
+            )
+            root.destroy()
+            result_q.put(chosen or "")
+
+        t = threading.Thread(target=_pick, daemon=True)
+        t.start()
+        t.join(timeout=120)
+
+        chosen = result_q.get_nowait() if not result_q.empty() else ""
+        if not chosen:
+            return {"selected": None}
+        return {"selected": chosen}
+
     @app.post("/api/config/data-dir")
     def switch_data_dir(body: DataDirRequest):
         """Switch the active data directory at runtime."""
