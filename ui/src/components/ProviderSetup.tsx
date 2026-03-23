@@ -9,6 +9,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { GearSix } from "@phosphor-icons/react";
 import { apiClient } from "@/lib/api";
 import type { Provider } from "@/stores/chatStore";
 
@@ -45,7 +46,8 @@ export function ProviderSetup({ providers, onUpdate }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button size="sm" variant="ghost" className="w-full h-7 text-xs" />}>
+      <DialogTrigger render={<Button size="sm" variant="outline" className="w-full h-7 text-xs gap-1.5" />}>
+          <GearSix size={14} />
           Providers ({providers.length})
       </DialogTrigger>
 

@@ -7,9 +7,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { ProviderSetup } from "./ProviderSetup";
 import { SearchDialog } from "./SearchDialog";
+import { DataDirDialog } from "./DataDirDialog";
 import {
   CaretLeft, CaretRight, CaretDown,
   Plus, X, DownloadSimple,
+  FolderOpen,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import type { Chatroom, Chat } from "@/stores/chatStore";
@@ -46,6 +48,7 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const importRef = useRef<HTMLInputElement>(null);
   const [dataDir, setDataDir] = useState("");
+  const [dataDirDialogOpen, setDataDirDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -173,24 +176,30 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
       "border-r border-border flex flex-col h-full bg-sidebar transition-all duration-200",
       isSmallScreen
         ? cn("fixed inset-y-0 left-0 z-40 w-64", open ? "translate-x-0" : "-translate-x-full")
-        : cn("relative", open ? "w-64" : "w-8")
+        : cn("relative", open ? "w-64" : "w-12")
     )}>
       {/* FAB toggle at right border */}
       <button
         onClick={onToggle}
         className={cn(
-          "absolute top-4 z-20 w-8 h-8 rounded-full bg-sidebar border border-border shadow-sm flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors",
-          isSmallScreen ? "-right-10" : "-right-4"
+          "absolute top-4 z-20 w-5 h-5 rounded-full bg-sidebar border border-border shadow-sm flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors",
+          isSmallScreen ? "-right-6" : "-right-2.5"
         )}
         title={open ? "Collapse sidebar" : "Expand sidebar"}
       >
-        {open ? <CaretLeft size={32} /> : <CaretRight size={32} />}
+        {open ? <CaretLeft size={16} /> : <CaretRight size={16} />}
       </button>
+
+      {!open && !isSmallScreen && (
+        <div className="flex items-center justify-center p-3">
+          <img src="/logos/tukey-light-none.svg" alt="Tukey" className="h-6 w-6" />
+        </div>
+      )}
 
       {(open || isSmallScreen) && (
       <>
       <div className="p-3 flex items-center justify-between">
-        <span className="font-semibold text-lg text-sidebar-foreground">Tukey</span>
+        <img src="/logos/tukey-light-right.svg" alt="Tukey" className="h-8 w-auto" />
         <SearchDialog />
       </div>
       <Separator />
@@ -253,17 +262,39 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
         </div>
       </ScrollArea>
       <Separator />
-      <div className="p-2">
+      <div className="p-2 space-y-1.5">
         <ProviderSetup providers={providers} onUpdate={setProviders} />
         {dataDir && (
-          <p className="text-[10px] text-muted-foreground mt-1 px-1 truncate" title={dataDir}>
-            {dataDir}
-          </p>
+          <div
+            className="flex items-center gap-1.5 px-1 py-0.5 rounded-md text-[10px] text-muted-foreground hover:text-foreground hover:bg-accent/50 cursor-pointer transition-colors"
+            title={dataDir}
+            onClick={() => setDataDirDialogOpen(true)}
+          >
+            <FolderOpen size={12} className="shrink-0" />
+            <span className="truncate">{dataDir}</span>
+          </div>
         )}
       </div>
       </>
       )}
     </div>
+    <DataDirDialog
+      open={dataDirDialogOpen}
+      onOpenChange={setDataDirDialogOpen}
+      currentDir={dataDir}
+      onSwitch={async (newDir) => {
+        setDataDir(newDir);
+        // Refresh all state after switching data directory
+        const rooms = await apiClient.listChatrooms();
+        setChatrooms(rooms);
+        const provs = await apiClient.listProviders();
+        setProviders(provs);
+        setActiveChatroom(null);
+        setActiveChat(null);
+        setMessages([]);
+        setChats([]);
+      }}
+    />
     </>
   );
 }

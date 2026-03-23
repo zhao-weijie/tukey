@@ -126,4 +126,11 @@ export const apiClient = {
 
   // Health
   getHealth: () => api<{ status: string; data_dir: string }>("/api/health"),
+
+  // Data directory
+  setDataDir: (data_dir: string) =>
+    api<{ status: string; data_dir: string }>("/api/config/data-dir", {
+      method: "POST",
+      body: JSON.stringify({ data_dir }),
+    }),
 };

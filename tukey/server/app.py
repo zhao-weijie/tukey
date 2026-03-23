@@ -7,14 +7,16 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
+from pydantic import BaseModel
+
 from tukey import __version__
 from tukey.config import ConfigManager
-from tukey.storage import Storage
+from tukey.storage import Storage, read_global_config, write_global_config
 from tukey.server.routes import config as config_routes
 from tukey.server.routes import chat as chat_routes
 from tukey.server.routes import models as models_routes
@@ -29,6 +31,27 @@ _DEV_STATIC = Path(__file__).resolve().parent.parent.parent / "ui" / "dist"
 UI_DIST = _PKG_STATIC if _PKG_STATIC.exists() else _DEV_STATIC
 
 
+def _init_routes(storage: Storage, config: ConfigManager) -> None:
+    """Wire up all route modules with the given storage/config instances."""
+    config_routes.init(config)
+    chat_routes.init(storage, config)
+    models_routes.init(config)
+    search_routes.init(storage)
+    experiment_routes.init(storage, config)
+    ws_routes.init(storage, config)
+
+
+class _AppState:
+    """Mutable holder so the health/switch endpoints always see the current instances."""
+    def __init__(self, storage: Storage, config: ConfigManager):
+        self.storage = storage
+        self.config = config
+
+
+class DataDirRequest(BaseModel):
+    data_dir: str
+
+
 def create_app(data_dir: str | None = None) -> FastAPI:
     app = FastAPI(title="Tukey", version=__version__)
 
@@ -40,17 +63,17 @@ def create_app(data_dir: str | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Resolve data_dir: CLI flag > global config > default
+    if data_dir is None:
+        global_cfg = read_global_config()
+        data_dir = global_cfg.get("data_dir")
+
     storage = Storage(data_dir)
     storage.ensure_dirs()
     config = ConfigManager(storage)
+    state = _AppState(storage, config)
 
-    # Wire up route modules
-    config_routes.init(config)
-    chat_routes.init(storage, config)
-    models_routes.init(config)
-    search_routes.init(storage)
-    experiment_routes.init(storage, config)
-    ws_routes.init(storage, config)
+    _init_routes(storage, config)
 
     app.include_router(config_routes.router)
     app.include_router(chat_routes.router)
@@ -61,11 +84,37 @@ def create_app(data_dir: str | None = None) -> FastAPI:
 
     @app.get("/api/health")
     def health():
-        return {"status": "ok", "data_dir": str(storage.data_dir)}
+        return {"status": "ok", "data_dir": str(state.storage.data_dir)}
+
+    @app.post("/api/config/data-dir")
+    def switch_data_dir(body: DataDirRequest):
+        """Switch the active data directory at runtime."""
+        new_dir = body.data_dir.strip()
+        if not new_dir:
+            raise HTTPException(400, "data_dir must not be empty")
+
+        new_storage = Storage(new_dir)
+        new_storage.ensure_dirs()
+        new_config = ConfigManager(new_storage)
+
+        # Re-wire all route modules
+        _init_routes(new_storage, new_config)
+        state.storage = new_storage
+        state.config = new_config
+
+        # Persist choice for next startup
+        global_cfg = read_global_config()
+        global_cfg["data_dir"] = str(new_storage.data_dir)
+        write_global_config(global_cfg)
+
+        return {"status": "ok", "data_dir": str(new_storage.data_dir)}
 
     # Serve built UI
     if UI_DIST.exists():
         app.mount("/assets", StaticFiles(directory=UI_DIST / "assets"), name="assets")
+        logos_dir = UI_DIST / "logos"
+        if logos_dir.exists():
+            app.mount("/logos", StaticFiles(directory=logos_dir), name="logos")
 
         @app.get("/favicon-light.svg")
         async def favicon_light():

@@ -9,6 +9,23 @@ from typing import Any
 
 
 DEFAULT_DATA_DIR = Path.home() / ".tukey"
+GLOBAL_CONFIG_PATH = Path.home() / ".tukey" / "tukey-global.json"
+
+
+def read_global_config() -> dict:
+    """Read global config (lives outside any data_dir, always at ~/.tukey/)."""
+    if GLOBAL_CONFIG_PATH.exists():
+        return json.loads(GLOBAL_CONFIG_PATH.read_text(encoding="utf-8"))
+    return {}
+
+
+def write_global_config(data: dict) -> None:
+    """Write global config to ~/.tukey/tukey-global.json."""
+    GLOBAL_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    GLOBAL_CONFIG_PATH.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
 
 
 class Storage:
