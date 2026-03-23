@@ -249,7 +249,7 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
             {messages.map((msg, msgIdx) => {
               const grouped = groupResponsesByModel(msg.responses);
               const modelIds = Object.keys(grouped);
-              const hasContinuation = msgIdx < messages.length - 1;
+              const nextMsg = msgIdx < messages.length - 1 ? messages[msgIdx + 1] : null;
               return (
                 <div key={msg.id} className="space-y-2">
                   <div className="flex items-center gap-2">
@@ -297,7 +297,7 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
                         messageId={msg.id}
                         chatroomId={activeChatroomId!}
                         chatId={activeChatId!}
-                        continuationIndex={hasContinuation ? (cyclingState[msg.id]?.[mid] ?? 0) : undefined}
+                        continuationIndex={nextMsg ? nextMsg.response_indices?.[msg.id] ?? 0 : undefined}
                       />
                     ))}
                   </ResponseCarousel>

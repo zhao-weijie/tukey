@@ -147,6 +147,7 @@ async def _handle_send(
         "content": content,
         "created_at": now,
         "responses": responses,
+        "response_indices": response_indices,
     }
     _storage.append_chat_message(chatroom_id, chat_id, turn)
 

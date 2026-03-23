@@ -343,6 +343,7 @@ class ChatRoom:
             "content": content,
             "created_at": now,
             "responses": resolved,
+            "response_indices": response_indices,
         }
         self.storage.append_chat_message(self.chatroom_id, chat_id, turn)
         return turn

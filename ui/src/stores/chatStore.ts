@@ -41,6 +41,7 @@ export interface Message {
   content: string;
   created_at: string;
   responses: ResponseMeta[];
+  response_indices?: Record<string, number>;
 }
 
 export interface Chatroom {

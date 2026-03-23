@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { ChartBar, CaretLeft, CaretRight, ChatText } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -64,9 +64,12 @@ export function ResponseCard({
   const { annotations, addAnnotation, updateAnnotation, deleteAnnotation } =
     useAnnotationStore();
 
-  // Auto-select first non-error response when current is an error
+  // Auto-select first non-error response on initial mount only
+  const didAutoSelect = useRef(false);
   useEffect(() => {
     if (streaming || responses.length === 0) return;
+    if (didAutoSelect.current) return;
+    didAutoSelect.current = true;
     if (responses[activeIndex]?.error) {
       const betterIdx = responses.findIndex(r => !r.error);
       if (betterIdx !== -1 && betterIdx !== activeIndex) {
