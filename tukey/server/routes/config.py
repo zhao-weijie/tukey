@@ -31,6 +31,7 @@ class ProviderCreate(BaseModel):
     api_key: str
     base_url: str | None = None
     display_name: str | None = None
+    strip_model_prefix: bool = False
 
 
 class ProviderUpdate(BaseModel):
@@ -38,6 +39,7 @@ class ProviderUpdate(BaseModel):
     api_key: str | None = None
     base_url: str | None = None
     display_name: str | None = None
+    strip_model_prefix: bool | None = None
 
 
 @router.get("/providers")
@@ -60,6 +62,7 @@ def create_provider(body: ProviderCreate):
         api_key=body.api_key,
         base_url=body.base_url,
         display_name=body.display_name,
+        strip_model_prefix=body.strip_model_prefix,
     )
 
 

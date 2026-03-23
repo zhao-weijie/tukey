@@ -317,6 +317,7 @@ class Experiment:
             api_key=prov.get("api_key"),
             base_url=prov.get("base_url"),
             provider_type=prov.get("provider"),
+            strip_model_prefix=prov.get("strip_model_prefix", False),
         )
 
     @staticmethod

@@ -24,6 +24,7 @@ export function ProviderSetup({ providers, onUpdate }: Props) {
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [stripModelPrefix, setStripModelPrefix] = useState(false);
 
   const addProvider = async () => {
     if (!apiKey.trim()) return;
@@ -32,11 +33,13 @@ export function ProviderSetup({ providers, onUpdate }: Props) {
       api_key: apiKey.trim(),
       base_url: baseUrl.trim() || null,
       display_name: displayName.trim() || provider.trim(),
+      strip_model_prefix: stripModelPrefix,
     });
     onUpdate([...providers, p]);
     setApiKey("");
     setBaseUrl("");
     setDisplayName("");
+    setStripModelPrefix(false);
   };
 
   const removeProvider = async (id: string) => {
@@ -62,6 +65,7 @@ export function ProviderSetup({ providers, onUpdate }: Props) {
                 <div className="font-medium">{p.display_name || p.provider}</div>
                 <div className="text-xs text-muted-foreground">
                   {p.base_url || "default"} &middot; {p.api_key.slice(0, 8)}...
+                  {p.strip_model_prefix && <span className="ml-1 text-amber-500">&middot; strip prefix</span>}
                 </div>
               </div>
               <div className="flex items-center gap-1">
@@ -95,6 +99,12 @@ export function ProviderSetup({ providers, onUpdate }: Props) {
               <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="My OpenAI" className="h-8 text-sm mt-1" />
             </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={stripModelPrefix}
+                onChange={(e) => setStripModelPrefix(e.target.checked)}
+                className="rounded border-input" />
+              <span className="text-xs text-muted-foreground">Strip model prefix (e.g. openai/gpt-4o → gpt-4o)</span>
+            </label>
             <Button size="sm" onClick={addProvider} className="w-full h-8">
               Add Provider
             </Button>

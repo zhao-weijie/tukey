@@ -118,7 +118,9 @@ export function ModelConfig({ models, providers, onUpdate }: Props) {
             <Label className="text-xs">Provider</Label>
             <Select value={newProviderId} onValueChange={(v) => v && setNewProviderId(v)}>
               <SelectTrigger className="w-full mt-1 text-sm">
-                <SelectValue />
+                <SelectValue placeholder="Select provider">
+                  {providers.find((p) => p.id === newProviderId)?.display_name || providers.find((p) => p.id === newProviderId)?.provider || "Select provider"}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {providers.map((p) => (

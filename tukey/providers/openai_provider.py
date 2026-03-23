@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from typing import Any, AsyncIterator
 
@@ -11,6 +12,8 @@ import httpx
 from .base import LLMResponse, StreamChunk
 from . import model_registry
 
+log = logging.getLogger(__name__)
+
 
 class OpenAICompatibleProvider:
     def __init__(
@@ -18,10 +21,12 @@ class OpenAICompatibleProvider:
         api_key: str | None = None,
         base_url: str | None = None,
         provider_type: str | None = None,
+        strip_model_prefix: bool = False,
     ):
         self.api_key = api_key
         self.base_url = (base_url or "https://api.openai.com/v1").rstrip("/")
         self.provider_type = provider_type
+        self.strip_model_prefix = strip_model_prefix
 
     def _headers(self) -> dict[str, str]:
         h = {"Content-Type": "application/json"}
@@ -30,6 +35,8 @@ class OpenAICompatibleProvider:
         return h
 
     def _build_payload(self, model: str, messages: list[dict], **extra: Any) -> dict:
+        if self.strip_model_prefix and "/" in model:
+            model = model.split("/", 1)[1]
         payload: dict[str, Any] = {"model": model, "messages": messages}
         for key in ("temperature", "max_tokens", "top_p", "stop",
                     "response_format", "tools", "tool_choice"):
@@ -39,7 +46,9 @@ class OpenAICompatibleProvider:
             payload.update(extra["extra_params"])
         if extra.get("stream"):
             payload["stream"] = True
-            payload["stream_options"] = {"include_usage": True}
+            # stream_options is supported by OpenAI and OpenRouter; omit for other gateways
+            if self.provider_type in ("openai", "openrouter"):
+                payload["stream_options"] = {"include_usage": True}
         return payload
 
     async def complete(
@@ -82,6 +91,7 @@ class OpenAICompatibleProvider:
         self, messages: list[dict], model: str, **kwargs: Any
     ) -> AsyncIterator[StreamChunk]:
         payload = self._build_payload(model, messages, stream=True, **kwargs)
+        log.info("stream request to %s/chat/completions model=%s strip_prefix=%s", self.base_url, payload["model"], self.strip_model_prefix)
         start = time.perf_counter()
         chunks_text: list[str] = []
         tokens_in = 0
@@ -95,14 +105,23 @@ class OpenAICompatibleProvider:
                 headers=self._headers(),
                 timeout=httpx.Timeout(300.0, connect=10.0),
             ) as resp:
-                resp.raise_for_status()
+                if resp.status_code >= 400:
+                    body = await resp.aread()
+                    detail = body.decode(errors="replace")[:500]
+                    log.error("API error %s: %s", resp.status_code, detail)
+                    raise RuntimeError(f"API {resp.status_code}: {detail}")
                 async for line in resp.aiter_lines():
-                    if not line.startswith("data: "):
+                    # SSE spec: space after colon is optional
+                    if line.startswith("data: "):
+                        payload = line[6:]
+                    elif line.startswith("data:"):
+                        payload = line[5:]
+                    else:
                         continue
-                    if line.strip() == "data: [DONE]":
+                    if payload.strip() == "[DONE]":
                         break
 
-                    chunk = json.loads(line[6:])
+                    chunk = json.loads(payload)
                     delta = ""
                     choices = chunk.get("choices", [])
                     if choices and choices[0].get("delta", {}).get("content"):

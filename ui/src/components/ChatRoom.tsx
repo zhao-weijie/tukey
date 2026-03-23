@@ -100,6 +100,11 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
     prevStreaming.current = isStreaming;
   }, [isStreaming, streamEntries.length]);
 
+  // Clear waiting state when a new message arrives (turn_complete/turn_updated)
+  useEffect(() => {
+    if (messages.length > 0) setWaitingForStream(false);
+  }, [messages.length]);
+
   const handleScroll = (e: React.UIEvent) => {
     const el = e.currentTarget;
     if (el.scrollHeight - el.scrollTop - el.clientHeight < 100) setShowScrollBtn(false);

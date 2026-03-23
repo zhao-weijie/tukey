@@ -6,6 +6,7 @@ export interface Provider {
   api_key: string;
   base_url?: string | null;
   display_name?: string;
+  strip_model_prefix?: boolean;
 }
 
 export interface ModelConfig {

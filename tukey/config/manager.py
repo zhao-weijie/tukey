@@ -35,6 +35,7 @@ class ConfigManager:
         api_key: str,
         base_url: str | None = None,
         display_name: str | None = None,
+        strip_model_prefix: bool = False,
     ) -> dict[str, Any]:
         cfg = self.load()
         entry = {
@@ -43,6 +44,7 @@ class ConfigManager:
             "api_key": api_key,
             "base_url": base_url,
             "display_name": display_name or provider,
+            "strip_model_prefix": strip_model_prefix,
         }
         cfg["providers"].append(entry)
         self.save(cfg)
