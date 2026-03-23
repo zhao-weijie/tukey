@@ -45,7 +45,7 @@ export function ResponseCarousel({ children }: Props) {
   };
 
   useEffect(() => {
-    updateScrollButtons();
+    requestAnimationFrame(() => updateScrollButtons());
   }, [containerWidth, childCount]);
 
   const scroll = (dir: -1 | 1) => {

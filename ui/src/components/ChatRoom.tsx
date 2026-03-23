@@ -246,9 +246,10 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
       <div className="flex flex-1 overflow-hidden">
         <ScrollArea className="flex-1 min-w-0 p-4" onScrollCapture={handleScroll}>
           <div className="space-y-6">
-            {messages.map((msg) => {
+            {messages.map((msg, msgIdx) => {
               const grouped = groupResponsesByModel(msg.responses);
               const modelIds = Object.keys(grouped);
+              const hasContinuation = msgIdx < messages.length - 1;
               return (
                 <div key={msg.id} className="space-y-2">
                   <div className="flex items-center gap-2">
@@ -296,6 +297,7 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
                         messageId={msg.id}
                         chatroomId={activeChatroomId!}
                         chatId={activeChatId!}
+                        continuationIndex={hasContinuation ? (cyclingState[msg.id]?.[mid] ?? 0) : undefined}
                       />
                     ))}
                   </ResponseCarousel>
