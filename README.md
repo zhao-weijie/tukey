@@ -7,7 +7,9 @@ pipx install tukey-llm
 tukey
 ```
 
-Open `http://localhost:8000`. Add your API keys in Settings, pick models, and start comparing.
+Open `http://localhost:8000`. A guided setup walks you through connecting your first provider — or bring your own API keys.
+
+![Tukey — side-by-side LLM comparison](docs/screenshot.png)
 
 ## What it does
 
@@ -17,7 +19,7 @@ Send a prompt once, get parallel streaming responses from every model you select
 - **Multiple completions** — generate 1–9 completions per model per prompt to observe variance, not just a single sample
 - **Per-response metadata** — tokens, cost, duration, tok/s for every response
 - **Local-first** — all data stored in `~/.tukey/`, nothing leaves your machine except API calls
-- **Experiments** — named test suites with batch execution, human annotation, and reproducible manifests
+- **Experiments** — named test suites with batch execution, human annotation, and reproducible manifests (API/CLI — UI coming soon)
 - **Text annotation** — select text in any response to rate and comment on specific sections; highlights persist across page reloads
 - **Search** — full-text search across all chatrooms, chats, and messages
 - **Import/export** — per-chatroom JSON export for backup or transfer
@@ -51,16 +53,19 @@ tukey --data-dir ./my-data  # custom data directory (default: ~/.tukey)
 
 ## Configuration
 
-On first launch, go to **Settings** and add at least one provider:
+On first launch, a guided setup helps you connect your first provider. The fastest path is **OpenRouter** — one API key gives you access to Claude, GPT, Gemini, and more (including free models).
+
+Alternatively, click **"I already have API keys"** to add any provider directly:
 
 | Provider | What to enter |
 |----------|--------------|
+| OpenRouter | API key from openrouter.ai/keys (recommended — access to 100+ models) |
 | OpenAI | API key from platform.openai.com |
 | Anthropic | API key from console.anthropic.com |
 | Google AI | API key from aistudio.google.dev |
-| OpenAI-compatible | Base URL + API key (OpenRouter, local servers, etc.) |
+| OpenAI-compatible | Base URL + API key (local servers, custom gateways, etc.) |
 
-Keys are stored in `~/.tukey/config.json`. They are never sent anywhere except to the provider's API.
+Keys are stored in `~/.tukey/config.json`. They are never sent anywhere except to the provider's API. You can switch data directories at runtime via the folder path in the sidebar.
 
 ## Usage
 
@@ -100,7 +105,11 @@ import httpx
 BASE = "http://localhost:8000"
 
 with httpx.Client(timeout=120) as client:
-    # Create a chat session in an existing chatroom
+    # List chatrooms
+    chatrooms = client.get(f"{BASE}/api/chat/chatrooms").json()
+    chatroom_id = chatrooms[0]["id"]
+
+    # Create a chat session
     chat = client.post(f"{BASE}/api/chat/chatrooms/{chatroom_id}/chats").json()
 
     # Send a message — fans out to all configured models concurrently

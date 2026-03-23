@@ -2,6 +2,8 @@
 name = "tukey-llm"
 dynamic = ["version"]
 description = "Compare LLM responses side-by-side with local persistence"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -27,8 +29,8 @@ dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
 tukey = "tukey.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/zhaow/tukey"
-Repository = "https://github.com/zhaow/tukey"
+Homepage = "https://github.com/zhao-weijie/tukey"
+Repository = "https://github.com/zhao-weijie/tukey"
 
 [build-system]
 requires = ["setuptools>=68.0"]

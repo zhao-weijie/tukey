@@ -38,6 +38,9 @@ Programmatic test generation is powerful but dangerous without domain expert inv
 - UX: Responsive sidebar — overlay drawer on small screens (<768px) with backdrop, auto-close on selection
 - UX: Delete confirmations — browser confirm dialog before deleting chatrooms or chats
 - UX: Loading skeleton — pulsing placeholder cards shown between send and first streaming chunk
+- UX: Welcome flow — guided setup renders within the chat area (sidebar visible) instead of a full-screen takeover; "I already have API keys" opens the existing ProviderSetup dialog; OpenRouter quick-start flow creates provider + sample chatroom in one step
+- UX: Native folder picker — data directory selection uses the system file dialog (tkinter) instead of manual path entry
+- Fix: Custom OpenAI-compatible gateway — correct SSE parsing, finish_reason handling, stream_options support, strip model prefix before sending to API
 - SUS6 Copy responses — copy full response (button in card header) and copy individual fenced code blocks (hover button)
 - SUS7 Improve readability — LLM responses rendered as markdown (headings, lists, tables, code blocks with syntax highlighting); user message newlines preserved via whitespace-pre-wrap
 
