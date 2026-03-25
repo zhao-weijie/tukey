@@ -17,6 +17,17 @@ export function useChat() {
         s.setStreamChunk(msg.model_id, responseIndex, msg.delta);
       } else if (msg.type === "chunk" && msg.done) {
         s.setStreamDone(msg.model_id, responseIndex, msg.metadata);
+      } else if (msg.type === "tool_call") {
+        const tc = msg.tool_call;
+        s.setStreamToolCall(msg.model_id, responseIndex, {
+          id: tc.id, name: tc.name, arguments: tc.arguments,
+        });
+      } else if (msg.type === "tool_result") {
+        const tr = msg.tool_result;
+        s.setStreamToolResult(msg.model_id, responseIndex, {
+          toolCallId: tr.tool_call_id, name: tr.name,
+          result: tr.result, error: tr.error,
+        });
       } else if (msg.type === "turn_complete") {
         s.addMessage(msg.turn);
         s.clearStream();

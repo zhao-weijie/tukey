@@ -9,7 +9,7 @@ from typing import Any, AsyncIterator
 
 import httpx
 
-from .base import LLMResponse, StreamChunk
+from .base import LLMResponse, StreamChunk, ToolCallInfo
 from . import model_registry
 
 log = logging.getLogger(__name__)
@@ -97,6 +97,9 @@ class OpenAICompatibleProvider:
         tokens_in = 0
         tokens_out = 0
 
+        # Accumulate tool call deltas (keyed by index)
+        tc_accum: dict[int, dict[str, str]] = {}  # {index: {id, name, arguments}}
+
         async with httpx.AsyncClient() as client:
             async with client.stream(
                 "POST",
@@ -113,27 +116,44 @@ class OpenAICompatibleProvider:
                 async for line in resp.aiter_lines():
                     # SSE spec: space after colon is optional
                     if line.startswith("data: "):
-                        payload = line[6:]
+                        sse_data = line[6:]
                     elif line.startswith("data:"):
-                        payload = line[5:]
+                        sse_data = line[5:]
                     else:
                         continue
-                    if payload.strip() == "[DONE]":
+                    if sse_data.strip() == "[DONE]":
                         break
 
-                    chunk = json.loads(payload)
+                    chunk = json.loads(sse_data)
                     delta = ""
                     choices = chunk.get("choices", [])
-                    if choices and choices[0].get("delta", {}).get("content"):
-                        delta = choices[0]["delta"]["content"]
+                    choice = choices[0] if choices else {}
+                    delta_obj = choice.get("delta", {})
+
+                    # Accumulate content deltas
+                    if delta_obj.get("content"):
+                        delta = delta_obj["content"]
                         chunks_text.append(delta)
+
+                    # Accumulate tool call deltas
+                    for tc_delta in delta_obj.get("tool_calls", []):
+                        idx = tc_delta.get("index", 0)
+                        if idx not in tc_accum:
+                            tc_accum[idx] = {"id": "", "name": "", "arguments": ""}
+                        if tc_delta.get("id"):
+                            tc_accum[idx]["id"] = tc_delta["id"]
+                        fn = tc_delta.get("function", {})
+                        if fn.get("name"):
+                            tc_accum[idx]["name"] = fn["name"]
+                        if fn.get("arguments"):
+                            tc_accum[idx]["arguments"] += fn["arguments"]
 
                     usage = chunk.get("usage")
                     if usage:
                         tokens_in = usage.get("prompt_tokens", 0) or 0
                         tokens_out = usage.get("completion_tokens", 0) or 0
 
-                    finish = choices[0].get("finish_reason") if choices else None
+                    finish = choice.get("finish_reason") if choices else None
                     if finish:
                         duration_ms = (time.perf_counter() - start) * 1000
                         full_content = "".join(chunks_text)
@@ -141,9 +161,23 @@ class OpenAICompatibleProvider:
                             tokens_out = len(full_content) // 4
                         tps = (tokens_out / (duration_ms / 1000)) if duration_ms > 0 else 0.0
                         cost = model_registry.compute_cost(model, tokens_in, tokens_out)
+
+                        # Build tool_calls list if any were accumulated
+                        tool_calls = None
+                        if tc_accum:
+                            tool_calls = [
+                                ToolCallInfo(
+                                    id=tc["id"],
+                                    name=tc["name"],
+                                    arguments=tc["arguments"],
+                                )
+                                for tc in (tc_accum[i] for i in sorted(tc_accum))
+                            ]
+
                         yield StreamChunk(
                             delta=delta,
                             done=True,
+                            tool_calls=tool_calls,
                             response=LLMResponse(
                                 content=full_content,
                                 tokens_in=tokens_in,

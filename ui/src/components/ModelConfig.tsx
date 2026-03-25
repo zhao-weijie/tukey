@@ -7,7 +7,7 @@ import { Slider } from "@/components/ui/slider";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { apiClient } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type { ModelConfig as MC, Provider } from "@/stores/chatStore";
+import type { ModelConfig as MC, Provider, McpServer } from "@/stores/chatStore";
 
 interface Caps {
   supports_reasoning: boolean;
@@ -19,6 +19,7 @@ interface Caps {
 interface Props {
   models: MC[];
   providers: Provider[];
+  mcpServers: McpServer[];
   onUpdate: (models: MC[]) => void;
 }
 
@@ -29,7 +30,7 @@ function valuesMatch(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-export function ModelConfig({ models, providers, onUpdate }: Props) {
+export function ModelConfig({ models, providers, mcpServers, onUpdate }: Props) {
   const [showAdd, setShowAdd] = useState(false);
   const [newModelId, setNewModelId] = useState("");
   const [newProviderId, setNewProviderId] = useState(providers[0]?.id || "");
@@ -87,6 +88,7 @@ export function ModelConfig({ models, providers, onUpdate }: Props) {
       response_format: null,
       tools: null,
       tool_choice: null,
+      mcp_server_ids: null,
     };
     onUpdate([...models, m]);
     setNewModelId("");
@@ -225,6 +227,7 @@ export function ModelConfig({ models, providers, onUpdate }: Props) {
                   isReference={m.id === referenceId}
                   refModel={refModel && m.id !== referenceId ? refModel : null}
                   onHeaderClick={() => setReferenceId(referenceId === m.id ? null : m.id)}
+                  mcpServers={mcpServers}
                   onUpdate={updateModel} onRemove={removeModel} onApplyToAll={applyToAll} />
               </div>
             );
@@ -247,6 +250,7 @@ interface CardProps {
   isReference: boolean;
   refModel: MC | null; // non-null means diff against this model
   onHeaderClick: () => void;
+  mcpServers: McpServer[];
   onUpdate: (idx: number, patch: Partial<MC>) => void;
   onRemove: (idx: number) => void;
   onApplyToAll: (idx: number, field: keyof MC | "reasoning_effort") => void;
@@ -270,7 +274,7 @@ function diffBg(refModel: MC | null, field: string, currentValue: unknown): stri
     : "bg-amber-500/15 rounded px-1 -mx-1";
 }
 
-function ModelCard({ model: m, idx, reasoning, anyReasoning, anyJsonSchema, showApply, isReference, refModel, onHeaderClick, onUpdate, onRemove, onApplyToAll }: CardProps) {
+function ModelCard({ model: m, idx, reasoning, anyReasoning, anyJsonSchema, showApply, isReference, refModel, onHeaderClick, mcpServers, onUpdate, onRemove, onApplyToAll }: CardProps) {
   const re = (m.extra_params.reasoning_effort as string) || "none";
 
   const [localPrompt, setLocalPrompt] = useState(m.system_prompt);
@@ -474,6 +478,43 @@ function ModelCard({ model: m, idx, reasoning, anyReasoning, anyJsonSchema, show
           </SelectContent>
         </Select>
       </div>
+
+      {/* MCP Servers */}
+      {mcpServers.length > 0 && (
+        <div>
+          <div className="flex items-center">
+            <Label className="text-xs">MCP Servers</Label>
+            {showApply && <ApplyBtn onClick={() => onApplyToAll(idx, "mcp_server_ids")} />}
+          </div>
+          <div className="mt-1 space-y-1">
+            {mcpServers.map((s) => {
+              const checked = (m.mcp_server_ids || []).includes(s.id);
+              return (
+                <label key={s.id} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => {
+                      const ids = m.mcp_server_ids || [];
+                      const next = e.target.checked
+                        ? [...ids, s.id]
+                        : ids.filter((id) => id !== s.id);
+                      const patch: Partial<MC> = { mcp_server_ids: next.length ? next : null };
+                      // Auto-set tool_choice to "auto" when enabling MCP servers
+                      if (next.length > 0 && !m.tool_choice) {
+                        patch.tool_choice = "auto";
+                      }
+                      onUpdate(idx, patch);
+                    }}
+                    className="rounded border-input"
+                  />
+                  <span className="text-xs">{s.name}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Tools */}
       <div className={diffBg(refModel, "tools", m.tools)}>

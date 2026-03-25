@@ -9,10 +9,11 @@ from datetime import datetime, timezone
 from importlib.metadata import version as pkg_version
 from typing import Any, AsyncIterator
 
+import json as json_mod
 import tukey
 from tukey.config import ConfigManager
 from tukey.providers.openai_provider import OpenAICompatibleProvider
-from tukey.providers.base import StreamChunk
+from tukey.providers.base import StreamChunk, ToolCallInfo, ToolResultInfo
 from tukey.storage import Storage
 
 
@@ -41,6 +42,7 @@ class ChatRoom:
                 "response_format": m.get("response_format"),
                 "tools": m.get("tools"),
                 "tool_choice": m.get("tool_choice"),
+                "mcp_server_ids": m.get("mcp_server_ids"),
             })
         meta = {
             "id": self.chatroom_id,
@@ -288,21 +290,9 @@ class ChatRoom:
         async def call_model(model_cfg: dict, response_index: int) -> dict:
             provider = self._build_provider(model_cfg["provider_id"])
             msgs = self._build_messages_for_model(chat_id, model_cfg, content, response_indices)
-            kwargs: dict[str, Any] = {}
-            if model_cfg.get("temperature") is not None:
-                kwargs["temperature"] = model_cfg["temperature"]
-            if model_cfg.get("max_tokens") is not None:
-                kwargs["max_tokens"] = model_cfg["max_tokens"]
-            if model_cfg.get("top_p") is not None:
-                kwargs["top_p"] = model_cfg["top_p"]
-            if model_cfg.get("extra_params"):
-                kwargs["extra_params"] = model_cfg["extra_params"]
-            if model_cfg.get("response_format"):
-                kwargs["response_format"] = model_cfg["response_format"]
+            kwargs = self._extract_kwargs(model_cfg)
             if model_cfg.get("tools"):
                 kwargs["tools"] = model_cfg["tools"]
-            if model_cfg.get("tool_choice") is not None:
-                kwargs["tool_choice"] = model_cfg["tool_choice"]
             resp = await provider.complete(msgs, model_cfg["model_id"], **kwargs)
             return {
                 "model_id": model_cfg["id"],
@@ -349,12 +339,9 @@ class ChatRoom:
         self.storage.append_chat_message(self.chatroom_id, chat_id, turn)
         return turn
 
-    async def stream_message(
-        self, chat_id: str, content: str, model_cfg: dict,
-        response_indices: dict[str, int] | None = None,
-    ) -> AsyncIterator[StreamChunk]:
-        provider = self._build_provider(model_cfg["provider_id"])
-        msgs = self._build_messages_for_model(chat_id, model_cfg, content, response_indices)
+    @staticmethod
+    def _extract_kwargs(model_cfg: dict) -> dict[str, Any]:
+        """Extract LLM kwargs from a model config dict."""
         kwargs: dict[str, Any] = {}
         if model_cfg.get("temperature") is not None:
             kwargs["temperature"] = model_cfg["temperature"]
@@ -362,11 +349,104 @@ class ChatRoom:
             kwargs["max_tokens"] = model_cfg["max_tokens"]
         if model_cfg.get("top_p") is not None:
             kwargs["top_p"] = model_cfg["top_p"]
+        if model_cfg.get("extra_params"):
+            kwargs["extra_params"] = model_cfg["extra_params"]
         if model_cfg.get("response_format"):
             kwargs["response_format"] = model_cfg["response_format"]
-        if model_cfg.get("tools"):
-            kwargs["tools"] = model_cfg["tools"]
         if model_cfg.get("tool_choice") is not None:
             kwargs["tool_choice"] = model_cfg["tool_choice"]
-        async for chunk in provider.stream(msgs, model_cfg["model_id"], **kwargs):
-            yield chunk
+        return kwargs
+
+    async def _resolve_tools(
+        self, model_cfg: dict, mcp_manager: Any | None,
+    ) -> tuple[list[dict] | None, dict[str, str]]:
+        """Merge MCP tools + raw tools. Returns (tools_list, tool_name->server_id routing)."""
+        tools: list[dict] = []
+        routing: dict[str, str] = {}
+
+        # MCP server tools
+        mcp_ids = model_cfg.get("mcp_server_ids") or []
+        if mcp_ids and mcp_manager:
+            mcp_tools = await mcp_manager.get_tools(mcp_ids, self.config)
+            tools.extend(mcp_tools)
+            routing = mcp_manager.get_tool_routing(mcp_ids)
+
+        # Raw tools from model config
+        if model_cfg.get("tools"):
+            tools.extend(model_cfg["tools"])
+
+        return (tools if tools else None, routing)
+
+    async def stream_message(
+        self, chat_id: str, content: str, model_cfg: dict,
+        response_indices: dict[str, int] | None = None,
+        mcp_manager: Any | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        provider = self._build_provider(model_cfg["provider_id"])
+        msgs = self._build_messages_for_model(chat_id, model_cfg, content, response_indices)
+        kwargs = self._extract_kwargs(model_cfg)
+
+        # Resolve tools (MCP + raw)
+        tools, tool_routing = await self._resolve_tools(model_cfg, mcp_manager)
+        if tools:
+            kwargs["tools"] = tools
+            if "tool_choice" not in kwargs or kwargs["tool_choice"] is None:
+                kwargs["tool_choice"] = "auto"
+
+        MAX_ITERATIONS = 10
+        for iteration in range(MAX_ITERATIONS):
+            final_chunk: StreamChunk | None = None
+
+            async for chunk in provider.stream(msgs, model_cfg["model_id"], **kwargs):
+                if chunk.done:
+                    final_chunk = chunk
+                yield chunk
+
+            # Check if the model made tool calls
+            if not final_chunk or not final_chunk.tool_calls or not mcp_manager:
+                break
+
+            # Build assistant message with tool_calls for conversation history
+            assistant_msg: dict[str, Any] = {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.name, "arguments": tc.arguments},
+                    }
+                    for tc in final_chunk.tool_calls
+                ],
+            }
+            if final_chunk.response and final_chunk.response.content:
+                assistant_msg["content"] = final_chunk.response.content
+            msgs.append(assistant_msg)
+
+            # Execute each tool call
+            for tc in final_chunk.tool_calls:
+                server_id = tool_routing.get(tc.name)
+                if server_id:
+                    try:
+                        result = await mcp_manager.call_tool(
+                            server_id, tc.name,
+                            json_mod.loads(tc.arguments) if tc.arguments else {},
+                        )
+                        yield StreamChunk(tool_result=ToolResultInfo(
+                            tool_call_id=tc.id, name=tc.name, result=result,
+                        ))
+                    except Exception as e:
+                        result = json_mod.dumps({"error": str(e)})
+                        yield StreamChunk(tool_result=ToolResultInfo(
+                            tool_call_id=tc.id, name=tc.name, result=result, error=True,
+                        ))
+                else:
+                    result = json_mod.dumps({"error": f"Unknown tool: {tc.name}"})
+                    yield StreamChunk(tool_result=ToolResultInfo(
+                        tool_call_id=tc.id, name=tc.name, result=result, error=True,
+                    ))
+
+                msgs.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": result,
+                })

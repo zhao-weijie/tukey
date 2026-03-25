@@ -124,6 +124,26 @@ export const apiClient = {
       body: JSON.stringify(data),
     }),
 
+  // MCP Servers
+  listMcpServers: () => api<any[]>("/api/config/mcp-servers"),
+  createMcpServer: (data: { name: string; command: string; args?: string[]; env?: Record<string, string> }) =>
+    api<any>("/api/config/mcp-servers", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateMcpServer: (id: string, data: any) =>
+    api<any>(`/api/config/mcp-servers/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  deleteMcpServer: (id: string) =>
+    api<void>(`/api/config/mcp-servers/${id}`, { method: "DELETE" }),
+  testMcpServer: (id: string) =>
+    api<{ ok: boolean; error?: string; tools: { name: string; description: string }[] }>(
+      `/api/config/mcp-servers/${id}/test`,
+      { method: "POST" }
+    ),
+
   // Health
   getHealth: () => api<{ status: string; data_dir: string }>("/api/health"),
 

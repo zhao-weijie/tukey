@@ -10,18 +10,21 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from tukey.chat.room import ChatRoom
 from tukey.config import ConfigManager
+from tukey.mcp.manager import McpManager
 from tukey.storage import Storage
 
 router = APIRouter()
 
 _storage: Storage | None = None
 _config: ConfigManager | None = None
+_mcp_manager: McpManager | None = None
 
 
-def init(storage: Storage, config: ConfigManager) -> None:
-    global _storage, _config
+def init(storage: Storage, config: ConfigManager, mcp_manager: McpManager) -> None:
+    global _storage, _config, _mcp_manager
     _storage = storage
     _config = config
+    _mcp_manager = mcp_manager
 
 
 @router.websocket("/ws/chat/{chatroom_id}/{chat_id}")
@@ -77,10 +80,72 @@ async def _handle_send(
     async def stream_model(model_cfg: dict, response_index: int):
         model_id = model_cfg["id"]
         room = ChatRoom(_storage, _config, chatroom_id)
+        tool_interactions: list[dict] = []
+        current_tool_calls: list[dict] = []
+        last_content = ""
+        last_metadata: dict = {}
         try:
             async for chunk in room.stream_message(
-                chat_id, content, model_cfg, response_indices
+                chat_id, content, model_cfg, response_indices,
+                mcp_manager=_mcp_manager,
             ):
+                # Tool call info from the model
+                if chunk.tool_calls:
+                    current_tool_calls = [
+                        {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
+                        for tc in chunk.tool_calls
+                    ]
+                    for tc in chunk.tool_calls:
+                        await safe_send({
+                            "type": "tool_call",
+                            "turn_id": turn_id,
+                            "model_id": model_id,
+                            "response_index": response_index,
+                            "tool_call": {
+                                "id": tc.id, "name": tc.name, "arguments": tc.arguments,
+                            },
+                        })
+
+                # Tool result after execution
+                if chunk.tool_result:
+                    tr = chunk.tool_result
+                    await safe_send({
+                        "type": "tool_result",
+                        "turn_id": turn_id,
+                        "model_id": model_id,
+                        "response_index": response_index,
+                        "tool_result": {
+                            "tool_call_id": tr.tool_call_id,
+                            "name": tr.name,
+                            "result": tr.result[:2000],  # truncate for WS
+                            "error": tr.error,
+                        },
+                    })
+                    # Check if all tool results for this iteration are in
+                    tool_results = [
+                        e for e in tool_interactions
+                        if e.get("_pending")
+                    ]
+                    if not tool_results:
+                        tool_interactions.append({
+                            "tool_calls": current_tool_calls,
+                            "tool_results": [{
+                                "tool_call_id": tr.tool_call_id,
+                                "name": tr.name,
+                                "result": tr.result[:2000],
+                                "error": tr.error,
+                            }],
+                        })
+                    else:
+                        tool_interactions[-1]["tool_results"].append({
+                            "tool_call_id": tr.tool_call_id,
+                            "name": tr.name,
+                            "result": tr.result[:2000],
+                            "error": tr.error,
+                        })
+                    continue
+
+                # Regular content chunk
                 msg = {
                     "type": "chunk",
                     "turn_id": turn_id,
@@ -91,21 +156,30 @@ async def _handle_send(
                 }
                 if chunk.done and chunk.response:
                     r = chunk.response
-                    resp_data = {
+                    last_content = r.content
+                    last_metadata = {
                         "tokens_in": r.tokens_in,
                         "tokens_out": r.tokens_out,
                         "cost": r.cost,
                         "duration_ms": r.duration_ms,
                         "tokens_per_sec": r.tokens_per_sec,
                     }
-                    msg["metadata"] = resp_data
-                    final_responses[(model_id, response_index)] = {
-                        "model_id": model_id,
-                        "response_index": response_index,
-                        "content": r.content,
-                        **resp_data,
-                    }
+                    # Only send metadata on the final done (no more tool calls)
+                    if not chunk.tool_calls:
+                        msg["metadata"] = last_metadata
                 await safe_send(msg)
+
+            # Build final response
+            resp_data = {
+                "model_id": model_id,
+                "response_index": response_index,
+                "content": last_content,
+                **last_metadata,
+            }
+            if tool_interactions:
+                resp_data["tool_interactions"] = tool_interactions
+            final_responses[(model_id, response_index)] = resp_data
+
         except Exception as e:
             await safe_send({
                 "type": "error",
@@ -201,10 +275,37 @@ async def _handle_regenerate(
     async def stream_model(model_cfg: dict, response_index: int):
         model_id = model_cfg["id"]
         room = ChatRoom(_storage, _config, chatroom_id)
+        last_content = ""
+        last_metadata: dict = {}
         try:
             async for chunk in room.stream_message(
-                chat_id, turn["content"], model_cfg
+                chat_id, turn["content"], model_cfg,
+                mcp_manager=_mcp_manager,
             ):
+                # Tool call/result events
+                if chunk.tool_calls:
+                    for tc in chunk.tool_calls:
+                        await safe_send({
+                            "type": "tool_call",
+                            "turn_id": turn_id,
+                            "model_id": model_id,
+                            "response_index": response_index,
+                            "tool_call": {"id": tc.id, "name": tc.name, "arguments": tc.arguments},
+                        })
+                if chunk.tool_result:
+                    tr = chunk.tool_result
+                    await safe_send({
+                        "type": "tool_result",
+                        "turn_id": turn_id,
+                        "model_id": model_id,
+                        "response_index": response_index,
+                        "tool_result": {
+                            "tool_call_id": tr.tool_call_id, "name": tr.name,
+                            "result": tr.result[:2000], "error": tr.error,
+                        },
+                    })
+                    continue
+
                 msg = {
                     "type": "chunk",
                     "turn_id": turn_id,
@@ -215,21 +316,24 @@ async def _handle_regenerate(
                 }
                 if chunk.done and chunk.response:
                     r = chunk.response
-                    resp_data = {
+                    last_content = r.content
+                    last_metadata = {
                         "tokens_in": r.tokens_in,
                         "tokens_out": r.tokens_out,
                         "cost": r.cost,
                         "duration_ms": r.duration_ms,
                         "tokens_per_sec": r.tokens_per_sec,
                     }
-                    msg["metadata"] = resp_data
-                    final_responses[(model_id, response_index)] = {
-                        "model_id": model_id,
-                        "response_index": response_index,
-                        "content": r.content,
-                        **resp_data,
-                    }
+                    if not chunk.tool_calls:
+                        msg["metadata"] = last_metadata
                 await safe_send(msg)
+
+            final_responses[(model_id, response_index)] = {
+                "model_id": model_id,
+                "response_index": response_index,
+                "content": last_content,
+                **last_metadata,
+            }
         except Exception as e:
             await safe_send({
                 "type": "error",

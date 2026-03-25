@@ -19,10 +19,27 @@ class LLMResponse:
 
 
 @dataclass
+class ToolCallInfo:
+    id: str = ""
+    name: str = ""
+    arguments: str = ""  # JSON string
+
+
+@dataclass
+class ToolResultInfo:
+    tool_call_id: str = ""
+    name: str = ""
+    result: str = ""
+    error: bool = False
+
+
+@dataclass
 class StreamChunk:
     delta: str = ""
     done: bool = False
     response: LLMResponse | None = None  # populated on final chunk
+    tool_calls: list[ToolCallInfo] | None = None  # populated when finish_reason == "tool_calls"
+    tool_result: ToolResultInfo | None = None  # populated after tool execution
 
 
 class LLMProvider(Protocol):

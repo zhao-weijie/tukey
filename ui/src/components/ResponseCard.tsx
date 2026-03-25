@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { ChartBar, CaretLeft, CaretRight, ChatText } from "@phosphor-icons/react";
+import { ChartBar, CaretLeft, CaretRight, ChatText, Wrench } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -9,7 +9,7 @@ import { AnnotationPopover } from "./AnnotationPopover";
 import { AnnotationReviewPopover } from "./AnnotationReviewPopover";
 import { useAnnotationStore } from "@/stores/annotationStore";
 import { extractQuoteSelector } from "@/lib/textSelector";
-import type { ResponseMeta } from "@/stores/chatStore";
+import type { ResponseMeta, ToolCallEntry, ToolResultEntry } from "@/stores/chatStore";
 import type { Annotation } from "@/stores/annotationStore";
 
 interface Props {
@@ -20,6 +20,8 @@ interface Props {
   streaming?: boolean;
   streamingContent?: string;
   streamingTotal?: number;
+  streamingToolCalls?: ToolCallEntry[];
+  streamingToolResults?: ToolResultEntry[];
   messageId?: string;
   chatroomId?: string;
   chatId?: string;
@@ -46,6 +48,8 @@ export function ResponseCard({
   streaming,
   streamingContent,
   streamingTotal,
+  streamingToolCalls,
+  streamingToolResults,
   messageId,
   chatroomId,
   chatId,
@@ -191,6 +195,14 @@ export function ResponseCard({
             </Badge>
           )}
         </div>
+        {/* Tool interactions during streaming */}
+        {streaming && streamingToolCalls && streamingToolCalls.length > 0 && (
+          <ToolInteractions toolCalls={streamingToolCalls} toolResults={streamingToolResults} />
+        )}
+        {/* Tool interactions from persisted response */}
+        {!streaming && active && (active as any).tool_interactions && (
+          <PersistedToolInteractions interactions={(active as any).tool_interactions} />
+        )}
         <div className="p-3" onMouseUp={handleMouseUp}>
           {streaming && !content ? (
             <div className="space-y-2 animate-pulse">
@@ -313,6 +325,109 @@ export function ResponseCard({
           onClose={() => setReviewPopover(null)}
         />
       )}
+    </div>
+  );
+}
+
+/* ── Tool interaction display ── */
+
+function truncateArgs(args: string, max = 80): string {
+  if (args.length <= max) return args;
+  return args.slice(0, max) + "...";
+}
+
+function ToolInteractions({
+  toolCalls,
+  toolResults,
+}: {
+  toolCalls: ToolCallEntry[];
+  toolResults?: ToolResultEntry[];
+}) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const resultMap = new Map((toolResults || []).map((r) => [r.toolCallId, r]));
+
+  return (
+    <div className="px-3 pt-2 space-y-1">
+      {toolCalls.map((tc) => {
+        const result = resultMap.get(tc.id);
+        const isExpanded = expanded[tc.id];
+        return (
+          <div key={tc.id} className="text-xs border border-border rounded px-2 py-1 bg-muted/30">
+            <div className="flex items-center gap-1.5">
+              <Wrench size={12} className="shrink-0 text-muted-foreground" />
+              <span className="font-mono font-medium">{tc.name}</span>
+              <span className="text-muted-foreground truncate">({truncateArgs(tc.arguments)})</span>
+              <span className="ml-auto shrink-0">
+                {result ? (
+                  result.error ? (
+                    <span className="text-destructive">error</span>
+                  ) : (
+                    <button
+                      onClick={() => setExpanded((e) => ({ ...e, [tc.id]: !e[tc.id] }))}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      {isExpanded ? "collapse" : `result (${result.result.length} chars)`}
+                    </button>
+                  )
+                ) : (
+                  <span className="animate-pulse text-muted-foreground">calling...</span>
+                )}
+              </span>
+            </div>
+            {isExpanded && result && (
+              <pre className="mt-1 text-[10px] text-muted-foreground whitespace-pre-wrap max-h-32 overflow-auto">
+                {result.result}
+              </pre>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PersistedToolInteractions({
+  interactions,
+}: {
+  interactions: { tool_calls: { id: string; name: string; arguments: string }[]; tool_results: { tool_call_id: string; name: string; result: string; error?: boolean }[] }[];
+}) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  if (!interactions || interactions.length === 0) return null;
+
+  const allCalls = interactions.flatMap((i) => i.tool_calls);
+  const resultMap = new Map(
+    interactions.flatMap((i) => i.tool_results).map((r) => [r.tool_call_id, r])
+  );
+
+  return (
+    <div className="px-3 pt-2 space-y-1">
+      {allCalls.map((tc) => {
+        const result = resultMap.get(tc.id);
+        const isExpanded = expanded[tc.id];
+        return (
+          <div key={tc.id} className="text-xs border border-border rounded px-2 py-1 bg-muted/30">
+            <div className="flex items-center gap-1.5">
+              <Wrench size={12} className="shrink-0 text-muted-foreground" />
+              <span className="font-mono font-medium">{tc.name}</span>
+              <span className="text-muted-foreground truncate">({truncateArgs(tc.arguments)})</span>
+              {result && (
+                <button
+                  onClick={() => setExpanded((e) => ({ ...e, [tc.id]: !e[tc.id] }))}
+                  className="ml-auto text-muted-foreground hover:text-foreground shrink-0"
+                >
+                  {result.error ? "error" : isExpanded ? "collapse" : `result (${result.result.length} chars)`}
+                </button>
+              )}
+            </div>
+            {isExpanded && result && (
+              <pre className="mt-1 text-[10px] text-muted-foreground whitespace-pre-wrap max-h-32 overflow-auto">
+                {result.result}
+              </pre>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

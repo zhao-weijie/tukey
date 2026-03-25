@@ -35,6 +35,7 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
     activeChatroomId, activeChatId,
     messages, setMessages, streaming,
     providers, setProviders,
+    mcpServers,
   } = useChatStore();
   const { connect, disconnect, send: wsSend, regenerate: wsRegenerate } = useChat();
   const [chatroom, setChatroom] = useState<Chatroom | null>(null);
@@ -139,6 +140,7 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
               <ModelConfig
                 models={chatroom?.models || []}
                 providers={providers}
+                mcpServers={mcpServers}
                 onUpdate={updateModels}
               />
             </div>
@@ -209,16 +211,16 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
   }
 
   // Group streaming entries by modelId for display
-  function groupStreamByModel(): Record<string, { content: string; total: number }> {
-    const groups: Record<string, { content: string; total: number; minIdx: number }> = {};
+  function groupStreamByModel(): Record<string, { content: string; total: number; toolCalls?: import("@/stores/chatStore").ToolCallEntry[]; toolResults?: import("@/stores/chatStore").ToolResultEntry[] }> {
+    const groups: Record<string, { content: string; total: number; minIdx: number; toolCalls?: import("@/stores/chatStore").ToolCallEntry[]; toolResults?: import("@/stores/chatStore").ToolResultEntry[] }> = {};
     for (const entry of Object.values(streaming)) {
       const mid = entry.modelId;
       if (!groups[mid]) {
-        groups[mid] = { content: entry.content, total: 1, minIdx: entry.responseIndex };
+        groups[mid] = { content: entry.content, total: 1, minIdx: entry.responseIndex, toolCalls: entry.toolCalls, toolResults: entry.toolResults };
       } else {
         groups[mid].total++;
         if (entry.responseIndex < groups[mid].minIdx) {
-          groups[mid] = { ...groups[mid], content: entry.content, minIdx: entry.responseIndex };
+          groups[mid] = { ...groups[mid], content: entry.content, minIdx: entry.responseIndex, toolCalls: entry.toolCalls, toolResults: entry.toolResults };
         }
       }
     }
@@ -256,6 +258,7 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
             <ModelConfig
               models={chatroom?.models || []}
               providers={providers}
+              mcpServers={mcpServers}
               onUpdate={updateModels}
             />
           </div>
@@ -344,7 +347,7 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
               <div className="space-y-2">
                 <div className="text-sm font-medium">You</div>
                 <ResponseCarousel>
-                  {Object.entries(groupStreamByModel()).map(([mid, { content, total }]) => (
+                  {Object.entries(groupStreamByModel()).map(([mid, { content, total, toolCalls, toolResults }]) => (
                     <ResponseCard
                       key={mid}
                       modelName={modelMap[mid]?.display_name || mid}
@@ -354,6 +357,8 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
                       streaming
                       streamingContent={content}
                       streamingTotal={total}
+                      streamingToolCalls={toolCalls}
+                      streamingToolResults={toolResults}
                     />
                   ))}
                 </ResponseCarousel>

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { ProviderSetup } from "./ProviderSetup";
+import { McpServerSetup } from "./McpServerSetup";
 import { SearchDialog } from "./SearchDialog";
 import { DataDirDialog } from "./DataDirDialog";
 import {
@@ -44,6 +45,7 @@ export function Sidebar({ open, onToggle, providerDialogOpen, onProviderDialogOp
     chats, setChats,
     activeChatId, setActiveChat,
     providers, setProviders,
+    mcpServers, setMcpServers,
     setMessages,
   } = useChatStore();
   const [newName, setNewName] = useState("");
@@ -56,6 +58,7 @@ export function Sidebar({ open, onToggle, providerDialogOpen, onProviderDialogOp
   useEffect(() => {
     apiClient.listChatrooms().then(setChatrooms).catch(console.error).finally(() => setLoading(false));
     apiClient.listProviders().then(setProviders).catch(console.error);
+    apiClient.listMcpServers().then(setMcpServers).catch(console.error);
     apiClient.getHealth().then((h) => setDataDir(h.data_dir)).catch(console.error);
   }, [setChatrooms, setProviders]);
 
@@ -271,6 +274,7 @@ export function Sidebar({ open, onToggle, providerDialogOpen, onProviderDialogOp
           externalOpen={providerDialogOpen}
           onExternalOpenChange={onProviderDialogOpenChange}
         />
+        <McpServerSetup servers={mcpServers} onUpdate={setMcpServers} />
         {dataDir && (
           <div
             className="flex items-center gap-1.5 px-1 py-0.5 rounded-md text-[10px] text-muted-foreground hover:text-foreground hover:bg-accent/50 cursor-pointer transition-colors"

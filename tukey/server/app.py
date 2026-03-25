@@ -22,7 +22,9 @@ from tukey.server.routes import chat as chat_routes
 from tukey.server.routes import models as models_routes
 from tukey.server.routes import search as search_routes
 from tukey.server.routes import experiments as experiment_routes
+from tukey.server.routes import mcp as mcp_routes
 from tukey.server import websocket as ws_routes
+from tukey.mcp.manager import McpManager
 
 # Installed package: tukey/static/ (populated by CI build)
 # Local dev: ui/dist/ (populated by npm run build)
@@ -31,14 +33,17 @@ _DEV_STATIC = Path(__file__).resolve().parent.parent.parent / "ui" / "dist"
 UI_DIST = _PKG_STATIC if _PKG_STATIC.exists() else _DEV_STATIC
 
 
-def _init_routes(storage: Storage, config: ConfigManager) -> None:
+def _init_routes(
+    storage: Storage, config: ConfigManager, mcp_manager: McpManager
+) -> None:
     """Wire up all route modules with the given storage/config instances."""
     config_routes.init(config)
     chat_routes.init(storage, config)
     models_routes.init(config)
     search_routes.init(storage)
     experiment_routes.init(storage, config)
-    ws_routes.init(storage, config)
+    mcp_routes.init(config, mcp_manager)
+    ws_routes.init(storage, config, mcp_manager)
 
 
 class _AppState:
@@ -71,16 +76,22 @@ def create_app(data_dir: str | None = None) -> FastAPI:
     storage = Storage(data_dir)
     storage.ensure_dirs()
     config = ConfigManager(storage)
+    mcp_manager = McpManager()
     state = _AppState(storage, config)
 
-    _init_routes(storage, config)
+    _init_routes(storage, config, mcp_manager)
 
     app.include_router(config_routes.router)
     app.include_router(chat_routes.router)
     app.include_router(models_routes.router)
     app.include_router(search_routes.router)
     app.include_router(experiment_routes.router)
+    app.include_router(mcp_routes.router)
     app.include_router(ws_routes.router)
+
+    @app.on_event("shutdown")
+    async def shutdown_mcp():
+        await mcp_manager.shutdown_all()
 
     @app.get("/api/health")
     def health():
@@ -133,7 +144,7 @@ def create_app(data_dir: str | None = None) -> FastAPI:
         new_config = ConfigManager(new_storage)
 
         # Re-wire all route modules
-        _init_routes(new_storage, new_config)
+        _init_routes(new_storage, new_config, mcp_manager)
         state.storage = new_storage
         state.config = new_config
 

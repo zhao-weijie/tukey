@@ -15,6 +15,7 @@ class ConfigManager:
     def load(self) -> dict[str, Any]:
         cfg = self.storage.read_config()
         cfg.setdefault("providers", [])
+        cfg.setdefault("mcp_servers", [])
         return cfg
 
     def save(self, cfg: dict[str, Any]) -> None:
@@ -68,6 +69,59 @@ class ConfigManager:
             p for p in cfg["providers"] if p["id"] != provider_id
         ]
         if len(cfg["providers"]) < before:
+            self.save(cfg)
+            return True
+        return False
+
+    # --- MCP Servers ---
+
+    def list_mcp_servers(self) -> list[dict[str, Any]]:
+        return self.load()["mcp_servers"]
+
+    def get_mcp_server(self, server_id: str) -> dict[str, Any] | None:
+        for s in self.list_mcp_servers():
+            if s["id"] == server_id:
+                return s
+        return None
+
+    def add_mcp_server(
+        self,
+        name: str,
+        command: str,
+        args: list[str] | None = None,
+        env: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        cfg = self.load()
+        entry = {
+            "id": str(uuid.uuid4()),
+            "name": name,
+            "command": command,
+            "args": args or [],
+            "env": env or {},
+            "enabled": True,
+        }
+        cfg["mcp_servers"].append(entry)
+        self.save(cfg)
+        return entry
+
+    def update_mcp_server(
+        self, server_id: str, updates: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        cfg = self.load()
+        for s in cfg["mcp_servers"]:
+            if s["id"] == server_id:
+                s.update(updates)
+                self.save(cfg)
+                return s
+        return None
+
+    def remove_mcp_server(self, server_id: str) -> bool:
+        cfg = self.load()
+        before = len(cfg["mcp_servers"])
+        cfg["mcp_servers"] = [
+            s for s in cfg["mcp_servers"] if s["id"] != server_id
+        ]
+        if len(cfg["mcp_servers"]) < before:
             self.save(cfg)
             return True
         return False
