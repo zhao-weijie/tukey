@@ -11,7 +11,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { CaretDown, CaretUp, ArrowsClockwise } from "@phosphor-icons/react";
-import { cn } from "@/lib/utils";
 import { useAnnotationStore } from "@/stores/annotationStore";
 import type { Chatroom, Chat, ModelConfig as MC, ResponseMeta } from "@/stores/chatStore";
 
@@ -134,21 +133,21 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
             </Button>
           </div>
         </div>
-        <div className="flex flex-1 overflow-hidden">
-          {showConfig ? (
-            <div className="flex-1 p-4 overflow-auto">
+        {showConfig ? (
+          <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden p-4">
+            <div className="flex-1 min-h-0 min-w-0">
               <ModelConfig
                 models={chatroom?.models || []}
                 providers={providers}
                 onUpdate={updateModels}
               />
             </div>
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground">
-              Create a chat to start a conversation, or configure models for this chatroom
-            </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-muted-foreground">
+            Create a chat to start a conversation, or configure models for this chatroom
+          </div>
+        )}
       </div>
     );
   }
@@ -248,8 +247,21 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        <ScrollArea className="flex-1 min-w-0 p-4" onScrollCapture={handleScroll}>
+      {showConfig ? (
+        <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden px-4 pt-3 pb-0">
+          <p className="text-[10px] text-muted-foreground flex-shrink-0 mb-2">
+            Editing chatroom config. Changes apply to new chats only.
+          </p>
+          <div className="flex-1 min-h-0 min-w-0">
+            <ModelConfig
+              models={chatroom?.models || []}
+              providers={providers}
+              onUpdate={updateModels}
+            />
+          </div>
+        </div>
+      ) : (
+        <ScrollArea className="flex-1 min-w-0 min-h-0 p-4" onScrollCapture={handleScroll}>
           <div className="space-y-6">
             {messages.map((msg, msgIdx) => {
               const grouped = groupResponsesByModel(msg.responses);
@@ -259,7 +271,6 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
                 <div key={msg.id} className="space-y-2">
                   <div className="flex items-center gap-2">
                     <div className="text-sm font-medium">You</div>
-                    {/* Regenerate button */}
                     <button
                       onClick={() => setRegenTurnId(regenTurnId === msg.id ? null : msg.id)}
                       className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
@@ -269,7 +280,6 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
                     </button>
                   </div>
                   <div className="text-sm bg-muted/30 rounded-md p-3 whitespace-pre-wrap">{msg.content}</div>
-                  {/* Inline regenerate form */}
                   {regenTurnId === msg.id && (
                     <div className="flex items-center gap-2 pl-1">
                       <span className="text-xs text-muted-foreground">Add</span>
@@ -352,27 +362,7 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
             <div ref={bottomRef} />
           </div>
         </ScrollArea>
-
-        <div className={cn(
-          "border-l border-border overflow-hidden transition-[width] duration-200",
-          showConfig ? "w-72" : "w-0"
-        )}>
-          {showConfig && (
-            <div className="w-72 p-3 overflow-auto h-full">
-              <div className="mb-3">
-                <p className="text-[10px] text-muted-foreground">
-                  Editing chatroom config. Changes apply to new chats only.
-                </p>
-              </div>
-              <ModelConfig
-                models={chatroom?.models || []}
-                providers={providers}
-                onUpdate={updateModels}
-              />
-            </div>
-          )}
-        </div>
-      </div>
+      )}
 
       {showScrollBtn && (
         <div className="flex justify-center py-1">

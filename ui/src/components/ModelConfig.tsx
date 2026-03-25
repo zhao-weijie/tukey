@@ -4,9 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
-import { Separator } from "@/components/ui/separator";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { apiClient } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import type { ModelConfig as MC, Provider } from "@/stores/chatStore";
 
 interface Caps {
@@ -22,6 +22,13 @@ interface Props {
   onUpdate: (models: MC[]) => void;
 }
 
+function valuesMatch(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a == null && b == null) return true;
+  if (a == null || b == null) return false;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 export function ModelConfig({ models, providers, onUpdate }: Props) {
   const [showAdd, setShowAdd] = useState(false);
   const [newModelId, setNewModelId] = useState("");
@@ -30,6 +37,7 @@ export function ModelConfig({ models, providers, onUpdate }: Props) {
   const [caps, setCaps] = useState<Record<string, Caps>>({});
   const [availableModels, setAvailableModels] = useState<{ id: string; name: string }[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [referenceId, setReferenceId] = useState<string | null>(null);
 
   const capsRef = useRef<Record<string, Caps>>({});
 
@@ -52,11 +60,17 @@ export function ModelConfig({ models, providers, onUpdate }: Props) {
     models.forEach((m) => fetchCaps(m.model_id));
   }, [models.map((m) => m.model_id).join(",")]);
 
-  // Fetch available models when provider changes
   useEffect(() => {
     if (!newProviderId) { setAvailableModels([]); return; }
     apiClient.getAvailableModels(newProviderId).then(setAvailableModels).catch(() => setAvailableModels([]));
   }, [newProviderId]);
+
+  // Clear reference if model removed
+  useEffect(() => {
+    if (referenceId && !models.find((m) => m.id === referenceId)) {
+      setReferenceId(null);
+    }
+  }, [models, referenceId]);
 
   const addModel = () => {
     if (!newModelId.trim() || !newProviderId) return;
@@ -103,17 +117,52 @@ export function ModelConfig({ models, providers, onUpdate }: Props) {
     onUpdate(next);
   };
 
+  // Compute global flags for conditional field alignment
+  const anyReasoning = models.some((m) => caps[m.model_id]?.supports_reasoning);
+  const anyJsonSchema = models.some((m) => m.response_format?.type === "json_schema");
+
+  const refModel = referenceId ? models.find((m) => m.id === referenceId) : null;
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const w = Math.round(entry.contentRect.width);
+      setContainerWidth(prev => Math.abs(prev - w) > 1 ? w : prev);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const MIN_CARD_WIDTH = 280;
+  const GAP = 12;
+  const visibleCount = Math.max(1, Math.floor((containerWidth + GAP) / (MIN_CARD_WIDTH + GAP)));
+  const effectiveVisible = Math.min(visibleCount, models.length);
+  const cardWidth = containerWidth > 0
+    ? (containerWidth - GAP * (effectiveVisible - 1)) / effectiveVisible
+    : MIN_CARD_WIDTH;
+
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">Models</span>
+    <div className="flex flex-col h-full min-h-0 min-w-0">
+      <div className="flex items-center justify-between flex-shrink-0 pb-3">
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium">Models</span>
+          {models.length > 1 && (
+            <span className="text-[10px] text-muted-foreground">
+              {referenceId ? "Click header again to deselect reference" : "Click a model header to compare"}
+            </span>
+          )}
+        </div>
         <Button size="sm" variant="outline" onClick={() => setShowAdd(!showAdd)} className="h-7 text-xs">
           {showAdd ? "Cancel" : "+ Add Model"}
         </Button>
       </div>
 
       {showAdd && (
-        <div className="space-y-2 p-3 border border-border rounded-md bg-muted/20">
+        <div className="space-y-2 p-3 border border-border rounded-md bg-muted/20 flex-shrink-0 mb-3">
           <div>
             <Label className="text-xs">Provider</Label>
             <Select value={newProviderId} onValueChange={(v) => v && setNewProviderId(v)}>
@@ -163,15 +212,25 @@ export function ModelConfig({ models, providers, onUpdate }: Props) {
         </div>
       )}
 
-      {models.map((m, i) => {
-        const mc = caps[m.model_id];
-        const reasoning = mc?.supports_reasoning ?? false;
-        return (
-          <ModelCard key={m.id} model={m} idx={i} reasoning={reasoning}
-            showApply={models.length > 1}
-            onUpdate={updateModel} onRemove={removeModel} onApplyToAll={applyToAll} />
-        );
-      })}
+      <div ref={containerRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
+        <div className="flex" style={{ gap: GAP }}>
+          {models.map((m, i) => {
+            const mc = caps[m.model_id];
+            const reasoning = mc?.supports_reasoning ?? false;
+            return (
+              <div key={m.id} style={{ width: cardWidth, flexShrink: 0 }}>
+                <ModelCard model={m} idx={i} reasoning={reasoning}
+                  anyReasoning={anyReasoning} anyJsonSchema={anyJsonSchema}
+                  showApply={models.length > 1}
+                  isReference={m.id === referenceId}
+                  refModel={refModel && m.id !== referenceId ? refModel : null}
+                  onHeaderClick={() => setReferenceId(referenceId === m.id ? null : m.id)}
+                  onUpdate={updateModel} onRemove={removeModel} onApplyToAll={applyToAll} />
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -182,7 +241,12 @@ interface CardProps {
   model: MC;
   idx: number;
   reasoning: boolean;
+  anyReasoning: boolean;
+  anyJsonSchema: boolean;
   showApply: boolean;
+  isReference: boolean;
+  refModel: MC | null; // non-null means diff against this model
+  onHeaderClick: () => void;
   onUpdate: (idx: number, patch: Partial<MC>) => void;
   onRemove: (idx: number) => void;
   onApplyToAll: (idx: number, field: keyof MC | "reasoning_effort") => void;
@@ -196,10 +260,19 @@ function ApplyBtn({ onClick }: { onClick: () => void }) {
   );
 }
 
-function ModelCard({ model: m, idx, reasoning, showApply, onUpdate, onRemove, onApplyToAll }: CardProps) {
+function diffBg(refModel: MC | null, field: string, currentValue: unknown): string {
+  if (!refModel) return "";
+  const refValue = field === "reasoning_effort"
+    ? refModel.extra_params.reasoning_effort
+    : (refModel as unknown as Record<string, unknown>)[field];
+  return valuesMatch(currentValue, refValue)
+    ? "bg-green-500/10 rounded px-1 -mx-1"
+    : "bg-amber-500/15 rounded px-1 -mx-1";
+}
+
+function ModelCard({ model: m, idx, reasoning, anyReasoning, anyJsonSchema, showApply, isReference, refModel, onHeaderClick, onUpdate, onRemove, onApplyToAll }: CardProps) {
   const re = (m.extra_params.reasoning_effort as string) || "none";
 
-  // Local state + debounce for textareas to prevent cursor reset
   const [localPrompt, setLocalPrompt] = useState(m.system_prompt);
   const [localSchema, setLocalSchema] = useState(
     m.response_format?.type === "json_schema" ? JSON.stringify(m.response_format.json_schema || {}, null, 2) : ""
@@ -209,7 +282,6 @@ function ModelCard({ model: m, idx, reasoning, showApply, onUpdate, onRemove, on
   const schemaDebounce = useRef<ReturnType<typeof setTimeout>>(undefined);
   const toolsDebounce = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // Sync from parent (e.g. "Apply to all")
   useEffect(() => { setLocalPrompt(m.system_prompt); }, [m.system_prompt]);
   useEffect(() => {
     if (m.response_format?.type === "json_schema") {
@@ -220,7 +292,6 @@ function ModelCard({ model: m, idx, reasoning, showApply, onUpdate, onRemove, on
     setLocalTools(m.tools ? JSON.stringify(m.tools, null, 2) : "");
   }, [m.tools]);
 
-  // Cleanup on unmount
   useEffect(() => () => {
     clearTimeout(promptDebounce.current);
     clearTimeout(schemaDebounce.current);
@@ -257,14 +328,27 @@ function ModelCard({ model: m, idx, reasoning, showApply, onUpdate, onRemove, on
   };
 
   return (
-    <div className="p-3 border border-border rounded-md space-y-2">
+    <div className={cn(
+      "p-3 border rounded-md space-y-2",
+      isReference ? "border-primary ring-2 ring-primary/30" : "border-border"
+    )}>
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">{m.display_name}</span>
+        <button
+          onClick={onHeaderClick}
+          className={cn(
+            "text-sm font-medium cursor-pointer hover:underline",
+            isReference && "text-primary"
+          )}
+          title={isReference ? "Click to deselect as reference" : "Click to set as comparison reference"}
+        >
+          {m.display_name}
+        </button>
         <button onClick={() => onRemove(idx)} className="text-xs text-muted-foreground hover:text-destructive">×</button>
       </div>
 
       {/* System Prompt */}
-      <div>
+      <div className={diffBg(refModel, "system_prompt", m.system_prompt)}>
         <div className="flex items-center">
           <Label className="text-xs">System Prompt</Label>
           {showApply && <ApplyBtn onClick={() => onApplyToAll(idx, "system_prompt")} />}
@@ -275,7 +359,7 @@ function ModelCard({ model: m, idx, reasoning, showApply, onUpdate, onRemove, on
       </div>
 
       {/* Temperature */}
-      <div>
+      <div className={diffBg(refModel, "temperature", m.temperature)}>
         <div className="flex items-center">
           <Label className="text-xs">Temperature: {m.temperature.toFixed(2)}</Label>
           {showApply && <ApplyBtn onClick={() => onApplyToAll(idx, "temperature")} />}
@@ -285,7 +369,7 @@ function ModelCard({ model: m, idx, reasoning, showApply, onUpdate, onRemove, on
       </div>
 
       {/* Max Tokens */}
-      <div>
+      <div className={diffBg(refModel, "max_tokens", m.max_tokens)}>
         <div className="flex items-center">
           <Label className="text-xs">Max Tokens</Label>
           {showApply && <ApplyBtn onClick={() => onApplyToAll(idx, "max_tokens")} />}
@@ -297,7 +381,7 @@ function ModelCard({ model: m, idx, reasoning, showApply, onUpdate, onRemove, on
       </div>
 
       {/* Top P */}
-      <div>
+      <div className={diffBg(refModel, "top_p", m.top_p)}>
         <div className="flex items-center">
           <Label className="text-xs">Top P: {m.top_p != null ? m.top_p.toFixed(2) : "default"}</Label>
           {showApply && <ApplyBtn onClick={() => onApplyToAll(idx, "top_p")} />}
@@ -309,29 +393,35 @@ function ModelCard({ model: m, idx, reasoning, showApply, onUpdate, onRemove, on
           }} className="mt-1" />
       </div>
 
-      {/* Reasoning Effort — conditional */}
-      {reasoning && (
-        <div>
+      {/* Reasoning Effort — shown for all when any model supports it */}
+      {anyReasoning && (
+        <div className={diffBg(refModel, "reasoning_effort", m.extra_params.reasoning_effort)}>
           <div className="flex items-center">
-            <Label className="text-xs">Reasoning Effort</Label>
-            {showApply && <ApplyBtn onClick={() => onApplyToAll(idx, "reasoning_effort")} />}
+            <Label className={cn("text-xs", !reasoning && "text-muted-foreground")}>Reasoning Effort</Label>
+            {showApply && reasoning && <ApplyBtn onClick={() => onApplyToAll(idx, "reasoning_effort")} />}
           </div>
-          <Select value={re} onValueChange={(v) => onUpdate(idx, { extra_params: { ...m.extra_params, reasoning_effort: v === "none" ? undefined : v } })}>
-            <SelectTrigger size="sm" className="w-full mt-1 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">None</SelectItem>
-              <SelectItem value="low">Low</SelectItem>
-              <SelectItem value="medium">Medium</SelectItem>
-              <SelectItem value="high">High</SelectItem>
-            </SelectContent>
-          </Select>
+          {reasoning ? (
+            <Select value={re} onValueChange={(v) => onUpdate(idx, { extra_params: { ...m.extra_params, reasoning_effort: v === "none" ? undefined : v } })}>
+              <SelectTrigger size="sm" className="w-full mt-1 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                <SelectItem value="low">Low</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : (
+            <div className="mt-1 h-8 flex items-center">
+              <span className="text-[10px] text-muted-foreground italic">N/A</span>
+            </div>
+          )}
         </div>
       )}
 
       {/* Response Format */}
-      <div>
+      <div className={diffBg(refModel, "response_format", m.response_format)}>
         <div className="flex items-center">
           <Label className="text-xs">Response Format</Label>
         </div>
@@ -349,19 +439,24 @@ function ModelCard({ model: m, idx, reasoning, showApply, onUpdate, onRemove, on
             <SelectItem value="json_schema">JSON Schema</SelectItem>
           </SelectContent>
         </Select>
-        {m.response_format?.type === "json_schema" && (
-          <Textarea
-            value={localSchema}
-            rows={3}
-            onChange={(e) => handleSchemaChange(e.target.value)}
-            className="text-xs mt-1 font-mono"
-            placeholder='{"name": "my_schema", "schema": {...}}'
-          />
+        {/* Show schema textarea for all when any model uses json_schema, for y-alignment */}
+        {anyJsonSchema && (
+          m.response_format?.type === "json_schema" ? (
+            <Textarea
+              value={localSchema}
+              rows={3}
+              onChange={(e) => handleSchemaChange(e.target.value)}
+              className="text-xs mt-1 font-mono"
+              placeholder='{"name": "my_schema", "schema": {...}}'
+            />
+          ) : (
+            <div className="mt-1 h-[4.5rem]" />
+          )
         )}
       </div>
 
       {/* Tool Choice */}
-      <div>
+      <div className={diffBg(refModel, "tool_choice", m.tool_choice)}>
         <div className="flex items-center">
           <Label className="text-xs">Tool Choice</Label>
         </div>
@@ -381,7 +476,7 @@ function ModelCard({ model: m, idx, reasoning, showApply, onUpdate, onRemove, on
       </div>
 
       {/* Tools */}
-      <div>
+      <div className={diffBg(refModel, "tools", m.tools)}>
         <div className="flex items-center">
           <Label className="text-xs">Tools (JSON)</Label>
         </div>
@@ -393,8 +488,6 @@ function ModelCard({ model: m, idx, reasoning, showApply, onUpdate, onRemove, on
           placeholder='[{"type": "function", "function": {"name": "...", "parameters": {...}}}]'
         />
       </div>
-
-      <Separator />
     </div>
   );
 }
