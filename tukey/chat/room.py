@@ -271,7 +271,33 @@ class ChatRoom:
             target_idx = (response_indices or {}).get(turn["id"], 0)
             for resp in turn.get("responses", []):
                 if resp["model_id"] == model_cfg["id"] and resp.get("response_index", 0) == target_idx:
-                    msgs.append({"role": "assistant", "content": resp["content"]})
+                    # Build assistant message with content and tool calls
+                    assistant_msg: dict[str, Any] = {"role": "assistant"}
+                    if resp.get("content"):
+                        assistant_msg["content"] = resp["content"]
+                    # Include tool calls and tool results from previous interactions
+                    tool_interactions = resp.get("tool_interactions", [])
+                    if tool_interactions:
+                        for interaction in tool_interactions:
+                            tool_calls = interaction.get("tool_calls", [])
+                            tool_results = interaction.get("tool_results", [])
+                            if tool_calls:
+                                assistant_msg["tool_calls"] = [
+                                    {
+                                        "id": tc["id"],
+                                        "type": "function",
+                                        "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                                    }
+                                    for tc in tool_calls
+                                ]
+                            # Add tool result messages after the assistant message
+                            for tr in tool_results:
+                                msgs.append({
+                                    "role": "tool",
+                                    "tool_call_id": tr["tool_call_id"],
+                                    "content": tr["result"],
+                                })
+                    msgs.append(assistant_msg)
         msgs.append({"role": "user", "content": user_content})
         return msgs
 

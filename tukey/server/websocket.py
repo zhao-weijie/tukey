@@ -35,7 +35,11 @@ async def chat_stream(ws: WebSocket, chatroom_id: str, chat_id: str):
 
     async def safe_send(msg: dict):
         async with ws_lock:
-            await ws.send_json(msg)
+            try:
+                await ws.send_json(msg)
+            except RuntimeError:
+                # WebSocket was closed (e.g., client disconnected)
+                pass
 
     try:
         while True:
