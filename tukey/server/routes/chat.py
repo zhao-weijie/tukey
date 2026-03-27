@@ -46,6 +46,8 @@ class ChatCreate(BaseModel):
 
 class ChatUpdate(BaseModel):
     name: str | None = None
+    models_snapshot: list[dict] | None = None
+    providers_snapshot: dict | None = None
 
 
 class MessageSend(BaseModel):

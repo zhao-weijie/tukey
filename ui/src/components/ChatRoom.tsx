@@ -160,8 +160,11 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
     setChatroom(updated);
   }
 
-  // Use chat's snapshot for display, fall back to chatroom models
-  const displayModels = chat?.models_snapshot || chatroom?.models || [];
+  // Before any messages, show the chatroom's live models so config changes
+  // are reflected immediately. Once messages exist, lock to the snapshot.
+  const displayModels = (messages.length === 0 && chatroom?.models)
+    ? chatroom.models
+    : (chat?.models_snapshot || chatroom?.models || []);
   const modelMap = Object.fromEntries(displayModels.map((m) => [m.id, m]));
 
   // Collect currently-viewed response indices for multi-turn context
@@ -238,11 +241,28 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
           <span className="text-xs text-muted-foreground">
             {displayModels.length} model(s)
           </span>
-          {chat && chatroom && chatroom.models.length !== chat.models_snapshot.length && (
-            <span className="text-[10px] text-amber-500" title="Start a new chat to use updated models">
-              (chatroom has {chatroom.models.length})
-            </span>
-          )}
+          {chat && chatroom && (() => {
+            const snapshotIds = new Set(chat.models_snapshot.map((m) => m.id));
+            const chatroomIds = new Set(chatroom.models.map((m) => m.id));
+            const stale = snapshotIds.size !== chatroomIds.size || [...snapshotIds].some((id) => !chatroomIds.has(id));
+            if (!stale) return null;
+            return (
+              <button
+                className="text-[10px] text-amber-500 hover:text-amber-400 cursor-pointer"
+                title="Click to update this chat's models to match the chatroom"
+                onClick={async () => {
+                  if (!activeChatroomId || !activeChatId) return;
+                  const updatedChat = await apiClient.updateChat(
+                    activeChatroomId, activeChatId,
+                    { models_snapshot: chatroom.models }
+                  );
+                  setChat(updatedChat);
+                }}
+              >
+                models changed — click to update
+              </button>
+            );
+          })()}
           <Button size="sm" variant="outline" onClick={() => setShowConfig(!showConfig)} className="h-7 text-xs">
             {showConfig ? "Hide Config" : "Configure"}
           </Button>

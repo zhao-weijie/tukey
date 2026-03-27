@@ -67,6 +67,15 @@ async def _handle_send(
         await safe_send({"error": "Chat not found"})
         return
 
+    # For the first message, re-snapshot from the chatroom's current models
+    # so config changes made after chat creation are picked up.
+    existing_msgs = _storage.read_chat_messages(chatroom_id, chat_id)
+    if not existing_msgs:
+        chatroom_meta = _storage.read_chatroom_meta(chatroom_id)
+        if chatroom_meta and chatroom_meta.get("models"):
+            chat_meta["models_snapshot"] = chatroom_meta["models"]
+            _storage.write_chat_meta(chatroom_id, chat_id, chat_meta)
+
     models = chat_meta.get("models_snapshot", [])
     n = min(max(data.get("n", 1), 1), 9)
     response_indices = data.get("response_indices")
