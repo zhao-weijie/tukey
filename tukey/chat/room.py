@@ -176,27 +176,63 @@ class ChatRoom:
     # --- Export / Import ---
 
     @staticmethod
-    def export_chatroom(storage: Storage, chatroom_id: str) -> dict[str, Any]:
+    def _export_chat_data(
+        storage: Storage,
+        chatroom_id: str,
+        chat_id: str,
+        *,
+        include_annotations: bool = True,
+        turn_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Build export dict for a single chat."""
+        chat_meta = storage.read_chat_meta(chatroom_id, chat_id)
+        if not chat_meta:
+            raise ValueError(f"Chat {chat_id} not found")
+        messages = storage.read_chat_messages(chatroom_id, chat_id)
+        if turn_ids is not None:
+            turn_set = set(turn_ids)
+            messages = [m for m in messages if m.get("id") in turn_set]
+        chat_data: dict[str, Any] = {
+            "name": chat_meta.get("name"),
+            "models_snapshot": chat_meta.get("models_snapshot", []),
+            "providers_snapshot": chat_meta.get("providers_snapshot", {}),
+            "runtime": chat_meta.get("runtime", {}),
+            "created_at": chat_meta.get("created_at"),
+            "messages": messages,
+        }
+        if include_annotations:
+            annotations = storage.read_chat_annotations(chatroom_id, chat_id)
+            if turn_ids is not None:
+                turn_set = set(turn_ids)
+                annotations = [
+                    a for a in annotations
+                    if a.get("target", {}).get("source", {}).get("message_id") in turn_set
+                ]
+            chat_data["annotations"] = annotations
+        else:
+            chat_data["annotations"] = []
+        return chat_data
+
+    @staticmethod
+    def export_chatroom(
+        storage: Storage,
+        chatroom_id: str,
+        *,
+        include_annotations: bool = True,
+    ) -> dict[str, Any]:
         meta = storage.read_chatroom_meta(chatroom_id)
         if not meta:
             raise ValueError(f"Chatroom {chatroom_id} not found")
         chats_export = []
         for cid in storage.list_chats(chatroom_id):
-            chat_meta = storage.read_chat_meta(chatroom_id, cid)
-            if not chat_meta:
+            try:
+                chat_data = ChatRoom._export_chat_data(
+                    storage, chatroom_id, cid,
+                    include_annotations=include_annotations,
+                )
+                chats_export.append(chat_data)
+            except ValueError:
                 continue
-            messages = storage.read_chat_messages(chatroom_id, cid)
-            annotations = storage.read_chat_annotations(chatroom_id, cid)
-            chat_data = {
-                "name": chat_meta.get("name"),
-                "models_snapshot": chat_meta.get("models_snapshot", []),
-                "providers_snapshot": chat_meta.get("providers_snapshot", {}),
-                "runtime": chat_meta.get("runtime", {}),
-                "created_at": chat_meta.get("created_at"),
-                "messages": messages,
-                "annotations": annotations,
-            }
-            chats_export.append(chat_data)
         return {
             "tukey_export": {
                 "version": 1,
@@ -210,6 +246,38 @@ class ChatRoom:
                 "updated_at": meta.get("updated_at"),
             },
             "chats": chats_export,
+        }
+
+    @staticmethod
+    def export_chat(
+        storage: Storage,
+        chatroom_id: str,
+        chat_id: str,
+        *,
+        include_annotations: bool = True,
+        turn_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        meta = storage.read_chatroom_meta(chatroom_id)
+        if not meta:
+            raise ValueError(f"Chatroom {chatroom_id} not found")
+        chat_data = ChatRoom._export_chat_data(
+            storage, chatroom_id, chat_id,
+            include_annotations=include_annotations,
+            turn_ids=turn_ids,
+        )
+        return {
+            "tukey_export": {
+                "version": 1,
+                "exported_at": datetime.now(timezone.utc).isoformat(),
+                "tukey_version": tukey.__version__,
+            },
+            "chatroom": {
+                "name": meta["name"],
+                "models": meta.get("models", []),
+                "created_at": meta.get("created_at"),
+                "updated_at": meta.get("updated_at"),
+            },
+            "chats": [chat_data],
         }
 
     @staticmethod

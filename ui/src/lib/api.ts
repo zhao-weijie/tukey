@@ -73,8 +73,23 @@ export const apiClient = {
     api<{ results: any[] }>(`/api/search?q=${encodeURIComponent(q)}&limit=${limit}`),
 
   // Export / Import
-  exportChatroom: (id: string) =>
-    api<any>(`/api/chat/chatrooms/${id}/export`),
+  exportChatroom: (id: string, opts: { include_annotations?: boolean } = {}) =>
+    api<any>(`/api/chat/chatrooms/${id}/export`, {
+      method: "POST",
+      body: JSON.stringify({ include_annotations: opts.include_annotations ?? true }),
+    }),
+  exportChat: (
+    chatroomId: string,
+    chatId: string,
+    opts: { include_annotations?: boolean; turn_ids?: string[] } = {},
+  ) =>
+    api<any>(`/api/chat/chatrooms/${chatroomId}/chats/${chatId}/export`, {
+      method: "POST",
+      body: JSON.stringify({
+        include_annotations: opts.include_annotations ?? true,
+        turn_ids: opts.turn_ids ?? null,
+      }),
+    }),
   importChatroom: (data: any) =>
     api<any>("/api/chat/chatrooms/import", {
       method: "POST",

@@ -192,16 +192,47 @@ async def replay_chat(chatroom_id: str, chat_id: str):
 
 # --- Export / Import ---
 
-@router.get("/chatrooms/{chatroom_id}/export")
-def export_chatroom(chatroom_id: str):
+class ChatroomExport(BaseModel):
+    include_annotations: bool = True
+
+
+class ChatExport(BaseModel):
+    include_annotations: bool = True
+    turn_ids: list[str] | None = None
+
+
+@router.post("/chatrooms/{chatroom_id}/export")
+def export_chatroom(chatroom_id: str, body: ChatroomExport):
     s, _ = _get_deps()
     if chatroom_id not in s.list_chatrooms():
         raise HTTPException(404, "Chatroom not found")
-    data = ChatRoom.export_chatroom(s, chatroom_id)
+    data = ChatRoom.export_chatroom(
+        s, chatroom_id,
+        include_annotations=body.include_annotations,
+    )
     cr_name = data["chatroom"]["name"].replace(" ", "_").lower()
     return JSONResponse(
         content=data,
         headers={"Content-Disposition": f'attachment; filename="tukey-{cr_name}.json"'},
+    )
+
+
+@router.post("/chatrooms/{chatroom_id}/chats/{chat_id}/export")
+def export_chat(chatroom_id: str, chat_id: str, body: ChatExport):
+    s, _ = _get_deps()
+    if chatroom_id not in s.list_chatrooms():
+        raise HTTPException(404, "Chatroom not found")
+    if chat_id not in s.list_chats(chatroom_id):
+        raise HTTPException(404, "Chat not found")
+    data = ChatRoom.export_chat(
+        s, chatroom_id, chat_id,
+        include_annotations=body.include_annotations,
+        turn_ids=body.turn_ids,
+    )
+    chat_name = (data["chats"][0].get("name") or "chat").replace(" ", "_").lower()
+    return JSONResponse(
+        content=data,
+        headers={"Content-Disposition": f'attachment; filename="tukey-{chat_name}.json"'},
     )
 
 

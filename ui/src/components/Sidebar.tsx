@@ -9,6 +9,7 @@ import { ProviderSetup } from "./ProviderSetup";
 import { McpServerSetup } from "./McpServerSetup";
 import { SearchDialog } from "./SearchDialog";
 import { DataDirDialog } from "./DataDirDialog";
+import { ExportDialog } from "./ExportDialog";
 import {
   CaretLeft, CaretRight, CaretDown,
   Plus, X, DownloadSimple,
@@ -54,6 +55,14 @@ export function Sidebar({ open, onToggle, providerDialogOpen, onProviderDialogOp
   const [dataDir, setDataDir] = useState("");
   const [dataDirDialogOpen, setDataDirDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [exportDialog, setExportDialog] = useState<{
+    open: boolean;
+    mode: "chatroom" | "chat";
+    chatroomId: string;
+    chatId?: string | null;
+    chatName?: string;
+    chatroomName?: string;
+  }>({ open: false, mode: "chatroom", chatroomId: "" });
 
   useEffect(() => {
     apiClient.listChatrooms().then(setChatrooms).catch(console.error).finally(() => setLoading(false));
@@ -136,16 +145,14 @@ export function Sidebar({ open, onToggle, providerDialogOpen, onProviderDialogOp
     }
   };
 
-  const exportChatroom = async (id: string, e: React.MouseEvent) => {
+  const openExportChatroom = (cr: Chatroom, e: React.MouseEvent) => {
     e.stopPropagation();
-    const data = await apiClient.exportChatroom(id);
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `tukey-export-${id.slice(0, 8)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    setExportDialog({ open: true, mode: "chatroom", chatroomId: cr.id, chatroomName: cr.name });
+  };
+
+  const openExportChat = (chatroomId: string, chat: Chat, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExportDialog({ open: true, mode: "chat", chatroomId, chatId: chat.id, chatName: chat.name });
   };
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -256,10 +263,11 @@ export function Sidebar({ open, onToggle, providerDialogOpen, onProviderDialogOp
               onToggle={() => toggleExpand(cr.id)}
               onSelect={() => selectChatroom(cr.id)}
               onDelete={(e) => deleteChatroom(cr.id, e)}
-              onExport={(e) => exportChatroom(cr.id, e)}
+              onExport={(e) => openExportChatroom(cr, e)}
               onCreateChat={(e) => createChat(cr.id, e)}
               onSelectChat={(chatId) => selectChat(cr.id, chatId)}
               onDeleteChat={(chatId, e) => deleteChat(cr.id, chatId, e)}
+              onExportChat={(chat, e) => openExportChat(cr.id, chat, e)}
               onRenameChatroom={(name) => renameChatroom(cr.id, name)}
               onRenameChat={(chatId, name) => renameChat(cr.id, chatId, name)}
             />
@@ -289,6 +297,15 @@ export function Sidebar({ open, onToggle, providerDialogOpen, onProviderDialogOp
       </>
       )}
     </div>
+    <ExportDialog
+      open={exportDialog.open}
+      onOpenChange={(open) => setExportDialog((prev) => ({ ...prev, open }))}
+      mode={exportDialog.mode}
+      chatroomId={exportDialog.chatroomId}
+      chatId={exportDialog.chatId}
+      chatName={exportDialog.chatName}
+      chatroomName={exportDialog.chatroomName}
+    />
     <DataDirDialog
       open={dataDirDialogOpen}
       onOpenChange={setDataDirDialogOpen}
@@ -358,7 +375,7 @@ function InlineEdit({ value, onSave }: { value: string; onSave: (v: string) => v
 function ChatroomItem({
   chatroom, isActive, isExpanded, activeChatId, chats,
   onToggle, onSelect, onDelete, onExport, onCreateChat, onSelectChat, onDeleteChat,
-  onRenameChatroom, onRenameChat,
+  onExportChat, onRenameChatroom, onRenameChat,
 }: {
   chatroom: Chatroom;
   isActive: boolean;
@@ -372,6 +389,7 @@ function ChatroomItem({
   onCreateChat: (e: React.MouseEvent) => void;
   onSelectChat: (chatId: string) => void;
   onDeleteChat: (chatId: string, e: React.MouseEvent) => void;
+  onExportChat: (chat: Chat, e: React.MouseEvent) => void;
   onRenameChatroom: (name: string) => void;
   onRenameChat: (chatId: string, name: string) => void;
 }) {
@@ -419,13 +437,22 @@ function ChatroomItem({
               }`}
             >
               <InlineEdit value={chat.name} onSave={(name) => onRenameChat(chat.id, name)} />
-              <button
-                onClick={(e) => onDeleteChat(chat.id, e)}
-                className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive"
-                title="Delete chat"
-              >
-                <X size={12} />
-              </button>
+              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 shrink-0">
+                <button
+                  onClick={(e) => onExportChat(chat, e)}
+                  className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+                  title="Export chat"
+                >
+                  <DownloadSimple size={12} />
+                </button>
+                <button
+                  onClick={(e) => onDeleteChat(chat.id, e)}
+                  className="p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive"
+                  title="Delete chat"
+                >
+                  <X size={12} />
+                </button>
+              </div>
             </div>
           ))}
           {chats.length === 0 && (
