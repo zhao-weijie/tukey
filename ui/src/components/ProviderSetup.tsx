@@ -33,6 +33,29 @@ export function ProviderSetup({ providers, onUpdate, externalOpen, onExternalOpe
   const [displayName, setDisplayName] = useState("");
   const [stripModelPrefix, setStripModelPrefix] = useState(false);
 
+  // Edit state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editApiKey, setEditApiKey] = useState("");
+  const [editBaseUrl, setEditBaseUrl] = useState("");
+  const [editDisplayName, setEditDisplayName] = useState("");
+
+  const startEdit = (p: Provider) => {
+    setEditingId(p.id);
+    setEditApiKey("");
+    setEditBaseUrl(p.base_url || "");
+    setEditDisplayName(p.display_name || "");
+  };
+
+  const saveEdit = async (id: string) => {
+    const updates: Record<string, any> = {};
+    if (editApiKey.trim()) updates.api_key = editApiKey.trim();
+    if (editDisplayName.trim()) updates.display_name = editDisplayName.trim();
+    updates.base_url = editBaseUrl.trim() || null;
+    const updated = await apiClient.updateProvider(id, updates);
+    onUpdate(providers.map((p) => (p.id === id ? updated : p)));
+    setEditingId(null);
+  };
+
   const addProvider = async () => {
     if (!apiKey.trim()) return;
     const p = await apiClient.createProvider({
@@ -50,6 +73,7 @@ export function ProviderSetup({ providers, onUpdate, externalOpen, onExternalOpe
   };
 
   const removeProvider = async (id: string) => {
+    if (!window.confirm("Removing a provider will break any model configurations that use it. Continue?")) return;
     await apiClient.deleteProvider(id);
     onUpdate(providers.filter((p) => p.id !== id));
   };
@@ -67,21 +91,54 @@ export function ProviderSetup({ providers, onUpdate, externalOpen, onExternalOpe
         </DialogHeader>
         <div className="space-y-4">
           {providers.map((p) => (
-            <div key={p.id} className="flex items-center justify-between p-2 border rounded-md text-sm">
-              <div>
-                <div className="font-medium">{p.display_name || p.provider}</div>
-                <div className="text-xs text-muted-foreground">
-                  {p.base_url || "default"} &middot; {p.api_key.slice(0, 8)}...
-                  {p.strip_model_prefix && <span className="ml-1 text-amber-500">&middot; strip prefix</span>}
+            <div key={p.id} className="p-2 border rounded-md text-sm space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-medium">{p.display_name || p.provider}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {p.base_url || "default"} &middot; {p.api_key.slice(0, 8)}...
+                    {p.strip_model_prefix && <span className="ml-1 text-amber-500">&middot; strip prefix</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <TestButton providerId={p.id} />
+                  <button onClick={() => startEdit(p)}
+                    className="text-xs text-muted-foreground hover:text-foreground px-2">
+                    Edit
+                  </button>
+                  <button onClick={() => removeProvider(p.id)}
+                    className="text-xs text-muted-foreground hover:text-destructive px-2">
+                    Remove
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center gap-1">
-                <TestButton providerId={p.id} />
-                <button onClick={() => removeProvider(p.id)}
-                  className="text-xs text-muted-foreground hover:text-destructive px-2">
-                  Remove
-                </button>
-              </div>
+              {editingId === p.id && (
+                <div className="space-y-2 pt-2 border-t">
+                  <div>
+                    <Label className="text-xs">New API Key (leave blank to keep current)</Label>
+                    <Input value={editApiKey} onChange={(e) => setEditApiKey(e.target.value)}
+                      type="password" placeholder="sk-..." className="h-8 text-sm mt-1" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Base URL</Label>
+                    <Input value={editBaseUrl} onChange={(e) => setEditBaseUrl(e.target.value)}
+                      placeholder="https://api.openai.com/v1" className="h-8 text-sm mt-1" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Display Name</Label>
+                    <Input value={editDisplayName} onChange={(e) => setEditDisplayName(e.target.value)}
+                      className="h-8 text-sm mt-1" />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => saveEdit(p.id)} className="h-7 text-xs">
+                      Save
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setEditingId(null)} className="h-7 text-xs">
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
 

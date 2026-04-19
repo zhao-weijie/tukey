@@ -61,6 +61,11 @@ export const apiClient = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  updateProvider: (id: string, data: Record<string, any>) =>
+    api<any>(`/api/config/providers/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
   deleteProvider: (id: string) =>
     api<void>(`/api/config/providers/${id}`, { method: "DELETE" }),
   testProvider: (id: string) =>

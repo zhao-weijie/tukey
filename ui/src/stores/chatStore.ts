@@ -173,10 +173,15 @@ export const useChatStore = create<ChatState>((set) => ({
     set((s) => {
       const key = `${modelId}:${responseIndex}`;
       const prev = s.streaming[key] || { content: "", done: false, modelId, responseIndex };
+      const existing = prev.toolCalls || [];
+      const idx = existing.findIndex(tc => tc.id === toolCall.id);
+      const updated = idx >= 0
+        ? existing.map((tc, i) => i === idx ? toolCall : tc)
+        : [...existing, toolCall];
       return {
         streaming: {
           ...s.streaming,
-          [key]: { ...prev, toolCalls: [...(prev.toolCalls || []), toolCall] },
+          [key]: { ...prev, toolCalls: updated },
         },
       };
     }),
