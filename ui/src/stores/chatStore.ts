@@ -105,6 +105,7 @@ interface ChatState {
   activeChatId: string | null;
   messages: Message[];
   streaming: StreamState;
+  streamingChatId: string | null;
   providers: Provider[];
   mcpServers: McpServer[];
 
@@ -122,6 +123,7 @@ interface ChatState {
   setStreamDone: (modelId: string, responseIndex: number, metadata?: Partial<ResponseMeta>) => void;
   setStreamToolCall: (modelId: string, responseIndex: number, toolCall: ToolCallEntry) => void;
   setStreamToolResult: (modelId: string, responseIndex: number, toolResult: ToolResultEntry) => void;
+  setStreamingChatId: (id: string | null) => void;
   clearStream: () => void;
 }
 
@@ -132,13 +134,14 @@ export const useChatStore = create<ChatState>((set) => ({
   activeChatId: null,
   messages: [],
   streaming: {},
+  streamingChatId: null,
   providers: [],
   mcpServers: [],
 
   setChatrooms: (chatrooms) => set({ chatrooms }),
-  setActiveChatroom: (id) => set((s) => s.activeChatroomId === id ? {} : { activeChatroomId: id, chats: [], activeChatId: null, messages: [], streaming: {} }),
+  setActiveChatroom: (id) => set((s) => s.activeChatroomId === id ? {} : { activeChatroomId: id, chats: [], activeChatId: null, messages: [] }),
   setChats: (chats) => set({ chats }),
-  setActiveChat: (id) => set((s) => s.activeChatId === id ? {} : { activeChatId: id, messages: [], streaming: {} }),
+  setActiveChat: (id) => set((s) => s.activeChatId === id ? {} : { activeChatId: id, messages: [] }),
   setMessages: (msgs) => set({ messages: msgs }),
   addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
   updateMessage: (turnId, msg) =>
@@ -196,5 +199,6 @@ export const useChatStore = create<ChatState>((set) => ({
         },
       };
     }),
-  clearStream: () => set({ streaming: {} }),
+  setStreamingChatId: (id) => set({ streamingChatId: id }),
+  clearStream: () => set({ streaming: {}, streamingChatId: null }),
 }));

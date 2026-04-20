@@ -33,11 +33,11 @@ interface ChatRoomProps {
 export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
   const {
     activeChatroomId, activeChatId,
-    messages, setMessages, streaming,
+    messages, setMessages, streaming, streamingChatId,
     providers, setProviders,
     mcpServers,
   } = useChatStore();
-  const { connect, disconnect, send: wsSend, regenerate: wsRegenerate } = useChat();
+  const { connect, send: wsSend, regenerate: wsRegenerate } = useChat();
   const [chatroom, setChatroom] = useState<Chatroom | null>(null);
   const [chat, setChat] = useState<Chat | null>(null);
   const [input, setInput] = useState("");
@@ -47,7 +47,6 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const prevStreaming = useRef(false);
   const [completionCount, setCompletionCount] = useState(1);
-  const [waitingForStream, setWaitingForStream] = useState(false);
   // Cycling state: { [turnId]: { [modelId]: activeIndex } }
   const [cyclingState, setCyclingState] = useState<Record<string, Record<string, number>>>({});
   // Regenerate UI state: which turn_id has the inline form open
@@ -73,7 +72,7 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
   // Load chat meta + messages + WS when chat changes
   useEffect(() => {
     if (!activeChatroomId || !activeChatId) {
-      setChat(null); setMessages([]); disconnect(); return;
+      setChat(null); setMessages([]); return;
     }
     Promise.all([
       apiClient.getChat(activeChatroomId, activeChatId),
@@ -83,39 +82,15 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
       setMessages(m);
       connect(activeChatroomId, activeChatId);
       fetchAnnotations(activeChatroomId, activeChatId).catch(console.error);
-      // If last message has empty responses, streaming is still in progress on the backend
-      const last = m[m.length - 1];
-      if (last && last.responses && last.responses.length === 0) {
-        setWaitingForStream(true);
-      }
     }).catch(console.error);
-    return () => disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChatroomId, activeChatId]);
-
-  // Poll for completed responses when we detect a skeleton turn
-  useEffect(() => {
-    if (!waitingForStream || !activeChatroomId || !activeChatId) return;
-    if (Object.keys(streaming).length > 0) return; // real streaming active, no need to poll
-    const interval = setInterval(async () => {
-      try {
-        const m = await apiClient.getMessages(activeChatroomId, activeChatId);
-        const last = m[m.length - 1];
-        if (last && last.responses && last.responses.length > 0) {
-          setMessages(m);
-          setWaitingForStream(false);
-        }
-      } catch { /* ignore */ }
-    }, 1500);
-    return () => clearInterval(interval);
-  }, [waitingForStream, activeChatroomId, activeChatId, streaming, setMessages]);
 
   // Detect streaming finish → show scroll button instead of forcing scroll
   const streamEntries = Object.values(streaming);
   const isStreaming = streamEntries.length > 0 && streamEntries.some(s => !s.done);
 
   useEffect(() => {
-    if (streamEntries.length > 0) setWaitingForStream(false);
     if (prevStreaming.current && !isStreaming && streamEntries.length > 0) {
       setShowScrollBtn(true);
     }
@@ -340,7 +315,7 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
                       </Button>
                     </div>
                   )}
-                  {msg.responses.length === 0 && Object.keys(streaming).length === 0 ? (
+                  {msg.responses.length === 0 && streamingChatId !== activeChatId ? (
                     <ResponseCarousel>
                       {displayModels.map((m) => (
                         <div key={m.id} className="min-w-0 border border-border rounded-lg flex flex-col h-32 animate-pulse">
@@ -376,7 +351,7 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
               );
             })}
 
-            {Object.keys(streaming).length > 0 && (
+            {Object.keys(streaming).length > 0 && streamingChatId === activeChatId && (
               <div className="space-y-2">
                 <ResponseCarousel>
                   {Object.entries(groupStreamByModel()).map(([mid, { content, total, toolCalls, toolResults }]) => (
