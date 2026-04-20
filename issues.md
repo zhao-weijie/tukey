@@ -1,11 +1,3 @@
-## (bug) Navigating away from a streaming chat, then returning results in a blank screen
-Severity: Major
-
-Start a new chat in a configured chatroom; send a message; navigate to another chat when first token has not arrived yet; navigate back; blank screen instead of in-progress stream observed - does not even have user message.
-
-In fixing this bug, more issues were created. If there is a single error-ed response, the Response Cards are repeated below and remain in the "Streaming..." state.
-
-
 ## (bug) Having more than 3 model configurations expands the right panel container beyond the visible screen area
 Severity: Major
 
@@ -56,12 +48,6 @@ Priority: high
 Problem: Some models fail while others succeed sometimes due to model quality or API/provider issues. It is not currently possible to retry just for the failed models.
 
 The first successful response should be shown as default.
-
-## (improvement) Resume streaming after navigating away and back
-Priority: high
-Problem: When a user navigates away from a chat mid-stream and returns, they see skeleton placeholders instead of live streaming. The backend continues streaming (in-flight tasks run to completion), but the new WebSocket connection cannot receive those chunks.
-
-Proposed solution: Add a module-level stream registry in `websocket.py` that maps `(chatroom_id, chat_id)` to a mutable sender reference + accumulated content per model. When a new WebSocket connects to a chat with an active stream: (1) swap the sender so in-flight tasks send chunks to the new connection, (2) send a `stream_resume` catch-up message with all content accumulated so far, (3) continue streaming live. Frontend handles the new `stream_resume` message type by populating `streaming` state with accumulated content. ~40 lines backend, ~10 lines frontend.
 
 ## (improvement) More flexible model/provider/config in a particular configuration "slot" instead of deleting
 Priority: normal
@@ -128,3 +114,16 @@ Symptom: tool call element is duplicated once (2 elements per tool call) shown w
 Symptom: Elements fit within the container width on first load. However, after Searching (for the SearchDialog) and Testing (for the Mcpserversetup), the buttons and text input boxes bleed past the right boundary of the container.
 
 ![Sceenshot](./.testing_images/dialogbug.png)
+
+## (bug) Navigating away from a streaming chat, then returning results in a blank screen
+Severity: Major
+
+Start a new chat in a configured chatroom; send a message; navigate to another chat when first token has not arrived yet; navigate back; blank screen instead of in-progress stream observed - does not even have user message.
+
+In fixing this bug, more issues were created. If there is a single error-ed response, the Response Cards are repeated below and remain in the "Streaming..." state.
+
+## (improvement) Resume streaming after navigating away and back
+Priority: high
+Problem: When a user navigates away from a chat mid-stream and returns, they see skeleton placeholders instead of live streaming. The backend continues streaming (in-flight tasks run to completion), but the new WebSocket connection cannot receive those chunks.
+
+Proposed solution: Add a module-level stream registry in `websocket.py` that maps `(chatroom_id, chat_id)` to a mutable sender reference + accumulated content per model. When a new WebSocket connects to a chat with an active stream: (1) swap the sender so in-flight tasks send chunks to the new connection, (2) send a `stream_resume` catch-up message with all content accumulated so far, (3) continue streaming live. Frontend handles the new `stream_resume` message type by populating `streaming` state with accumulated content. ~40 lines backend, ~10 lines frontend.

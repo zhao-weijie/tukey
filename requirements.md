@@ -172,3 +172,15 @@ As a user, I want a frictionless way to copy responses OR code within fenced blo
 
 ### SUS7 Improve readability
 As a user of the webapp, I want my inputs AND model responses to be formatted and rendered in their intended format so that I can read them more quickly. e.g. newlines in my inputs are currently lost, markdown is not rendered. 
+
+### SUS8 Model monitoring
+As an AI enthusiast barely keeping up, I want to be able to make quick assessments of new LLMs as soon as possible after their release so that I can update my understanding/evaluation/decisions of which LLMs to use for which tasks. 
+
+As a user of the webapp and backend module, I want to be able to define and re-use sets of configurations and (single-turn) prompts easily across providers and models so that I can automate fan-out evaluation of different models.
+
+As a user of the webapp and backend module, I want to be able to scan providers for new models added since the last run and run predefined config+prompt sets against those I'm interested in so that I can evaluate their performance with minimal effort.
+
+### SUS9 Alternate view/organization of chats by characteristics other than session
+As a user of the webapp, I want to view my interactions grouped by some combination of semantic/lexical similarity of configuration, model, prompt so that I can select responses from the most similar configs for comparison.
+
+Idea: semantic embedding + vector distance, or property graph?
