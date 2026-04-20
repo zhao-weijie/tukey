@@ -51,7 +51,7 @@ async def chat_stream(ws: WebSocket, chatroom_id: str, chat_id: str):
             else:
                 await _handle_send(ws, safe_send, chatroom_id, chat_id, data)
 
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, RuntimeError):
         pass
 
 
@@ -81,6 +81,17 @@ async def _handle_send(
     response_indices = data.get("response_indices")
     turn_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
+
+    # Persist skeleton immediately so navigating away and back still shows the user message
+    turn_skeleton = {
+        "id": turn_id,
+        "role": "user",
+        "content": content,
+        "created_at": now,
+        "responses": [],
+        "response_indices": response_indices,
+    }
+    _storage.append_chat_message(chatroom_id, chat_id, turn_skeleton)
 
     await safe_send({
         "type": "turn_start",
@@ -236,7 +247,13 @@ async def _handle_send(
         "responses": responses,
         "response_indices": response_indices,
     }
-    _storage.append_chat_message(chatroom_id, chat_id, turn)
+    # Replace the skeleton with the complete turn
+    messages = _storage.read_chat_messages(chatroom_id, chat_id)
+    for i, m in enumerate(messages):
+        if m["id"] == turn_id:
+            messages[i] = turn
+            break
+    _storage.write_chat_messages(chatroom_id, chat_id, messages)
 
     await safe_send({
         "type": "turn_complete",

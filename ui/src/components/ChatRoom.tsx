@@ -83,10 +83,32 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
       setMessages(m);
       connect(activeChatroomId, activeChatId);
       fetchAnnotations(activeChatroomId, activeChatId).catch(console.error);
+      // If last message has empty responses, streaming is still in progress on the backend
+      const last = m[m.length - 1];
+      if (last && last.responses && last.responses.length === 0) {
+        setWaitingForStream(true);
+      }
     }).catch(console.error);
     return () => disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChatroomId, activeChatId]);
+
+  // Poll for completed responses when we detect a skeleton turn
+  useEffect(() => {
+    if (!waitingForStream || !activeChatroomId || !activeChatId) return;
+    if (Object.keys(streaming).length > 0) return; // real streaming active, no need to poll
+    const interval = setInterval(async () => {
+      try {
+        const m = await apiClient.getMessages(activeChatroomId, activeChatId);
+        const last = m[m.length - 1];
+        if (last && last.responses && last.responses.length > 0) {
+          setMessages(m);
+          setWaitingForStream(false);
+        }
+      } catch { /* ignore */ }
+    }, 1500);
+    return () => clearInterval(interval);
+  }, [waitingForStream, activeChatroomId, activeChatId, streaming, setMessages]);
 
   // Detect streaming finish → show scroll button instead of forcing scroll
   const streamEntries = Object.values(streaming);
@@ -99,11 +121,6 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
     }
     prevStreaming.current = isStreaming;
   }, [isStreaming, streamEntries.length]);
-
-  // Clear waiting state when a new message arrives (turn_complete/turn_updated)
-  useEffect(() => {
-    if (messages.length > 0) setWaitingForStream(false);
-  }, [messages.length]);
 
   const handleScroll = (e: React.UIEvent) => {
     const el = e.currentTarget;
@@ -187,7 +204,6 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
     if (!text || sending || !activeChatroomId || !activeChatId) return;
     setInput("");
     setSending(true);
-    setWaitingForStream(true);
     try {
       const responseIndices = getResponseIndices();
       const sent = wsSend(text, completionCount, responseIndices);
@@ -324,48 +340,44 @@ export function ChatRoom({ demoPrompt, onDemoPromptUsed }: ChatRoomProps = {}) {
                       </Button>
                     </div>
                   )}
-                  <ResponseCarousel>
-                    {modelIds.map((mid) => (
-                      <ResponseCard
-                        key={mid}
-                        modelName={modelMap[mid]?.display_name || mid}
-                        responses={grouped[mid]}
-                        activeIndex={cyclingState[msg.id]?.[mid] ?? 0}
-                        onIndexChange={(idx) => handleCyclingChange(msg.id, mid, idx)}
-                        messageId={msg.id}
-                        chatroomId={activeChatroomId!}
-                        chatId={activeChatId!}
-                        continuationIndex={nextMsg ? nextMsg.response_indices?.[msg.id] ?? 0 : undefined}
-                      />
-                    ))}
-                  </ResponseCarousel>
+                  {msg.responses.length === 0 && Object.keys(streaming).length === 0 ? (
+                    <ResponseCarousel>
+                      {displayModels.map((m) => (
+                        <div key={m.id} className="min-w-0 border border-border rounded-lg flex flex-col h-32 animate-pulse">
+                          <div className="flex items-center px-3 py-2 border-b border-border bg-muted/30">
+                            <div className="h-4 w-24 bg-muted rounded" />
+                          </div>
+                          <div className="flex-1 p-3 space-y-2">
+                            <div className="h-3 w-full bg-muted/50 rounded" />
+                            <div className="h-3 w-3/4 bg-muted/50 rounded" />
+                            <div className="h-3 w-1/2 bg-muted/50 rounded" />
+                          </div>
+                        </div>
+                      ))}
+                    </ResponseCarousel>
+                  ) : msg.responses.length > 0 ? (
+                    <ResponseCarousel>
+                      {modelIds.map((mid) => (
+                        <ResponseCard
+                          key={mid}
+                          modelName={modelMap[mid]?.display_name || mid}
+                          responses={grouped[mid]}
+                          activeIndex={cyclingState[msg.id]?.[mid] ?? 0}
+                          onIndexChange={(idx) => handleCyclingChange(msg.id, mid, idx)}
+                          messageId={msg.id}
+                          chatroomId={activeChatroomId!}
+                          chatId={activeChatId!}
+                          continuationIndex={nextMsg ? nextMsg.response_indices?.[msg.id] ?? 0 : undefined}
+                        />
+                      ))}
+                    </ResponseCarousel>
+                  ) : null}
                 </div>
               );
             })}
 
-            {waitingForStream && Object.keys(streaming).length === 0 && (
-              <div className="space-y-2">
-                <div className="text-sm font-medium text-muted-foreground">Waiting for responses...</div>
-                <ResponseCarousel>
-                  {displayModels.map((m) => (
-                    <div key={m.id} className="min-w-0 border border-border rounded-lg flex flex-col h-32 animate-pulse">
-                      <div className="flex items-center px-3 py-2 border-b border-border bg-muted/30">
-                        <div className="h-4 w-24 bg-muted rounded" />
-                      </div>
-                      <div className="flex-1 p-3 space-y-2">
-                        <div className="h-3 w-full bg-muted/50 rounded" />
-                        <div className="h-3 w-3/4 bg-muted/50 rounded" />
-                        <div className="h-3 w-1/2 bg-muted/50 rounded" />
-                      </div>
-                    </div>
-                  ))}
-                </ResponseCarousel>
-              </div>
-            )}
-
             {Object.keys(streaming).length > 0 && (
               <div className="space-y-2">
-                <div className="text-sm font-medium">You</div>
                 <ResponseCarousel>
                   {Object.entries(groupStreamByModel()).map(([mid, { content, total, toolCalls, toolResults }]) => (
                     <ResponseCard

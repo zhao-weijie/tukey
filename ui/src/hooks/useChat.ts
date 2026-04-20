@@ -28,8 +28,21 @@ export function useChat() {
           toolCallId: tr.tool_call_id, name: tr.name,
           result: tr.result, error: tr.error,
         });
+      } else if (msg.type === "turn_start") {
+        s.addMessage({
+          id: msg.turn_id,
+          role: "user",
+          content: msg.content,
+          created_at: new Date().toISOString(),
+          responses: [],
+        });
       } else if (msg.type === "turn_complete") {
-        s.addMessage(msg.turn);
+        const exists = s.messages.some(m => m.id === msg.turn.id);
+        if (exists) {
+          s.updateMessage(msg.turn.id, msg.turn);
+        } else {
+          s.addMessage(msg.turn);
+        }
         s.clearStream();
       } else if (msg.type === "turn_updated") {
         s.updateMessage(msg.turn_id, msg.turn);
@@ -75,6 +88,7 @@ export function useChat() {
   const disconnect = useCallback(() => {
     wsRef.current?.close();
     wsRef.current = null;
+    useChatStore.getState().clearStream();
   }, []);
 
   return { connect, disconnect, send, regenerate };

@@ -57,6 +57,12 @@ Problem: Some models fail while others succeed sometimes due to model quality or
 
 The first successful response should be shown as default.
 
+## (improvement) Resume streaming after navigating away and back
+Priority: high
+Problem: When a user navigates away from a chat mid-stream and returns, they see skeleton placeholders instead of live streaming. The backend continues streaming (in-flight tasks run to completion), but the new WebSocket connection cannot receive those chunks.
+
+Proposed solution: Add a module-level stream registry in `websocket.py` that maps `(chatroom_id, chat_id)` to a mutable sender reference + accumulated content per model. When a new WebSocket connects to a chat with an active stream: (1) swap the sender so in-flight tasks send chunks to the new connection, (2) send a `stream_resume` catch-up message with all content accumulated so far, (3) continue streaming live. Frontend handles the new `stream_resume` message type by populating `streaming` state with accumulated content. ~40 lines backend, ~10 lines frontend.
+
 ## (improvement) More flexible model/provider/config in a particular configuration "slot" instead of deleting
 Priority: normal
 

@@ -136,9 +136,9 @@ export const useChatStore = create<ChatState>((set) => ({
   mcpServers: [],
 
   setChatrooms: (chatrooms) => set({ chatrooms }),
-  setActiveChatroom: (id) => set((s) => s.activeChatroomId === id ? {} : { activeChatroomId: id, chats: [], activeChatId: null, messages: [] }),
+  setActiveChatroom: (id) => set((s) => s.activeChatroomId === id ? {} : { activeChatroomId: id, chats: [], activeChatId: null, messages: [], streaming: {} }),
   setChats: (chats) => set({ chats }),
-  setActiveChat: (id) => set((s) => s.activeChatId === id ? {} : { activeChatId: id, messages: [] }),
+  setActiveChat: (id) => set((s) => s.activeChatId === id ? {} : { activeChatId: id, messages: [], streaming: {} }),
   setMessages: (msgs) => set({ messages: msgs }),
   addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
   updateMessage: (turnId, msg) =>
