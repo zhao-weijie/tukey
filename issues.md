@@ -89,6 +89,22 @@ Multiple model responses are allowed to take the full width of the chat area con
 
 ![Sceenshot](./.testing_images/centered_chat.png)
 
+## (usability) Agent-driven experiment workflow is not yet reviewable in the frontend
+Priority: high
+Problem: The requirements describe agents/scripts driving statistically meaningful batches while domain experts review and annotate results in the same product. The backend experiment API exists, but the frontend only supports chat review annotations. Batch experiment results and experiment annotations are not exposed in the UI, so a human reviewer must inspect API/raw files instead of staying in the browser.
+
+Related gaps:
+- Experiment runs are synchronous and opaque: no progress stream, cancel, retry, resume, or per-case status.
+- Experiment execution launches all test-case/model pairs concurrently, which makes rate limits and cost control hard for agent-driven runs.
+- REST chat completion cannot request multiple completions or pass response-index context, even though the WebSocket path can.
+- Multi-turn response selection is turn-level rather than per-model, so different models cannot cleanly continue from different selected completion variants.
+
+## (usability) Configuration preflight is too shallow for automated runs
+Priority: high
+Problem: Before an agent spends time and money on a batch, Tukey should validate the exact selected provider/model/config combination. Current checks are partial: provider testing uses a hardcoded model, gateway/custom models may have unknown capabilities, and invalid JSON schema/tool config can be silently ignored while typing.
+
+Desired behavior: provide a preflight summary that checks each selected model ID, provider route, model capability assumptions, response format, tool configuration, MCP availability, token limits, and estimated cost/rate-limit risk before running a batch.
+
 ---
 # Not relevant to the codebase, for reference only
 ## (bug) Antigravity bug
