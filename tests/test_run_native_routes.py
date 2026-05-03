@@ -59,6 +59,33 @@ def _create_run(client, status="queued"):
     return config_set, slot, version, r.json()
 
 
+def _create_run_with_config(client, config_set, version, *, name="Route Run", chain_id=None):
+    body = {
+        "name": name,
+        "status": "complete",
+        "kind": "agent",
+        "config_set_id": config_set["id"],
+        "config_version_ids": [version["id"]],
+    }
+    if chain_id:
+        body["chain_id"] = chain_id
+    r = client.post("/api/runs", json=body)
+    assert r.status_code == 201
+    return r.json()
+
+
+def _append_text_output(client, run, slot, version, text):
+    r = client.post(f"/api/runs/{run['id']}/outputs", json={
+        "config_version_id": version["id"],
+        "slot_id": slot["id"],
+        "provider_model_id": slot["provider_model_id"],
+        "status": "complete",
+        "text": text,
+    })
+    assert r.status_code == 201
+    return r.json()
+
+
 def test_task_crud_and_soft_delete(client):
     r = client.post("/api/tasks", json={
         "name": "Support triage",
@@ -465,6 +492,90 @@ def test_run_chain_detail_export_and_search_are_run_native(client):
     assert exported["chain"]["id"] == chain["id"]
 
     results = client.get("/api/search?q=frog").json()["results"]
-    assert any(result["type"] == "run_output" and result["run_id"] == run["id"] for result in results)
+    assert any(
+        result["type"] == "run_output"
+        and result["run_id"] == run["id"]
+        and result["chain_id"] == chain["id"]
+        for result in results
+    )
     results = client.get("/api/search?q=memorable").json()["results"]
-    assert any(result["type"] == "annotation" and result["annotation_id"] == annotation["id"] for result in results)
+    assert any(
+        result["type"] == "annotation"
+        and result["annotation_id"] == annotation["id"]
+        and result["chain_id"] == chain["id"]
+        for result in results
+    )
+
+
+def test_search_derives_chain_contexts_from_all_membership_sources(client):
+    config_set, slot, version = _create_frozen_config_version(client)
+    direct_chain = client.post("/api/run-chains", json={"name": "Direct Chain"}).json()
+    root_chain = client.post("/api/run-chains", json={"name": "Root Chain"}).json()
+    edge_chain = client.post("/api/run-chains", json={"name": "Edge Chain"}).json()
+    multi_chain = client.post("/api/run-chains", json={"name": "Multi Chain"}).json()
+
+    direct = _create_run_with_config(
+        client,
+        config_set,
+        version,
+        name="direct-context",
+        chain_id=direct_chain["id"],
+    )
+    root = _create_run_with_config(client, config_set, version, name="root-context")
+    parent = _create_run_with_config(client, config_set, version, name="edge-parent")
+    edge_child = _create_run_with_config(client, config_set, version, name="edge-child")
+    multi = _create_run_with_config(client, config_set, version, name="multi-context")
+
+    direct_output = _append_text_output(client, direct, slot, version, "direct constellation")
+    root_output = _append_text_output(client, root, slot, version, "root constellation")
+    edge_output = _append_text_output(client, edge_child, slot, version, "edge constellation")
+    multi_output = _append_text_output(client, multi, slot, version, "multi constellation")
+
+    client.patch(f"/api/run-chains/{root_chain['id']}", json={"root_run_id": root["id"]})
+    client.post(f"/api/run-chains/{edge_chain['id']}/edges", json={
+        "parent_run_id": parent["id"],
+        "child_run_id": edge_child["id"],
+        "mapping": {},
+    })
+    client.patch(f"/api/run-chains/{multi_chain['id']}", json={"root_run_id": multi["id"]})
+    client.post(f"/api/run-chains/{edge_chain['id']}/edges", json={
+        "parent_run_id": parent["id"],
+        "child_run_id": multi["id"],
+        "mapping": {},
+    })
+
+    results = client.get("/api/search?q=constellation&limit=20").json()["results"]
+    contexts_by_output = {}
+    for result in results:
+        if result["type"] == "run_output":
+            contexts_by_output.setdefault(result["output_id"], set()).add(result["chain_id"])
+
+    assert contexts_by_output[direct_output["id"]] == {direct_chain["id"]}
+    assert contexts_by_output[root_output["id"]] == {root_chain["id"]}
+    assert contexts_by_output[edge_output["id"]] == {edge_chain["id"]}
+    assert contexts_by_output[multi_output["id"]] == {
+        edge_chain["id"],
+        multi_chain["id"],
+    }
+
+
+def test_search_omits_run_matches_without_visible_chain_context(client):
+    config_set, slot, version = _create_frozen_config_version(client)
+    archived = _create_run_with_config(client, config_set, version, name="archived-context")
+    no_chain = _create_run_with_config(client, config_set, version, name="no-chain-context")
+    archived_output = _append_text_output(client, archived, slot, version, "hidden meteor")
+    no_chain_output = _append_text_output(client, no_chain, slot, version, "hidden meteor")
+    chain = client.post("/api/run-chains", json={
+        "name": "Archived Chain",
+        "root_run_id": archived["id"],
+    }).json()
+    client.patch(f"/api/run-chains/{chain['id']}", json={"archived": True})
+
+    results = client.get("/api/search?q=hidden%20meteor").json()["results"]
+    output_ids = {
+        result.get("output_id")
+        for result in results
+        if result["type"] == "run_output"
+    }
+    assert archived_output["id"] not in output_ids
+    assert no_chain_output["id"] not in output_ids

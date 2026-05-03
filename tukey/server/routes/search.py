@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query
 
+from tukey.server.run_chain_membership import run_chain_contexts_by_run_id
 from tukey.storage import Storage
 
 router = APIRouter(prefix="/api", tags=["search"])
@@ -36,6 +37,17 @@ def search(q: str = Query(..., min_length=1), limit: int = Query(50, ge=1, le=20
     assert _storage is not None
     query_lower = q.lower()
     results: list[dict] = []
+    run_contexts = run_chain_contexts_by_run_id(_storage)
+
+    def append_for_contexts(base: dict, contexts: list[dict]) -> None:
+        for context in contexts:
+            if len(results) >= limit:
+                break
+            results.append({
+                **base,
+                "chain_id": context["chain_id"],
+                "chain_name": context.get("chain_name"),
+            })
 
     for task_id in _storage.list_tasks():
         if len(results) >= limit:
@@ -79,64 +91,57 @@ def search(q: str = Query(..., min_length=1), limit: int = Query(50, ge=1, le=20
         run = _storage.read_run_record_meta(run_id)
         if not run:
             continue
-        chain_id = run.get("chain_id")
-        chain = _storage.read_run_chain_meta(chain_id) if chain_id else {}
+        contexts = run_contexts.get(run_id, [])
+        if not contexts:
+            continue
         run_name = run.get("name") or ""
         if run_name and query_lower in run_name.lower():
-            results.append({
+            append_for_contexts({
                 "type": "run",
                 "run_id": run_id,
-                "chain_id": chain_id,
-                "chain_name": chain.get("name"),
                 "match": "run_name",
                 "snippet": _snippet(run_name, q),
-            })
+            }, contexts)
 
         for input_record in _storage.read_run_inputs(run_id):
             if len(results) >= limit:
                 break
             content = _content_text(input_record.get("content", []))
             if query_lower in content.lower():
-                results.append({
+                append_for_contexts({
                     "type": "run_input",
                     "run_id": run_id,
                     "input_id": input_record.get("id"),
-                    "chain_id": chain_id,
-                    "chain_name": chain.get("name"),
                     "match": "input_content",
                     "snippet": _snippet(content, q),
-                })
+                }, contexts)
 
         for output in _storage.read_run_outputs(run_id):
             if len(results) >= limit:
                 break
             content = output.get("text") or _content_text(output.get("content", []))
             if query_lower in content.lower():
-                results.append({
+                append_for_contexts({
                     "type": "run_output",
                     "run_id": run_id,
                     "output_id": output.get("id"),
-                    "chain_id": chain_id,
-                    "chain_name": chain.get("name"),
                     "match": "output_content",
                     "snippet": _snippet(content, q),
-                })
+                }, contexts)
 
         for annotation in _storage.read_run_annotations(run_id):
             if len(results) >= limit:
                 break
             comment = annotation.get("comment", "")
             if query_lower in comment.lower():
-                results.append({
+                append_for_contexts({
                     "type": "annotation",
                     "run_id": run_id,
                     "annotation_id": annotation.get("id"),
                     "output_id": annotation.get("target", {}).get("output_id"),
-                    "chain_id": chain_id,
-                    "chain_name": chain.get("name"),
                     "match": "annotation_comment",
                     "snippet": _snippet(comment, q),
-                })
+                }, contexts)
 
     return {"results": results[:limit]}
 

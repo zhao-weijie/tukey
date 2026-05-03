@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from tukey.core import contracts
+from tukey.server.run_chain_membership import chain_run_ids
 from tukey.storage import Storage
 
 router = APIRouter(prefix="/api/run-chains", tags=["run-chains"])
@@ -80,25 +81,9 @@ def _validate_edge_outputs(storage: Storage, parent_run_id: str, mapping: dict) 
         raise HTTPException(422, f"Mapped outputs not found on parent run: {missing}")
 
 
-def _chain_run_ids(storage: Storage, chain_id: str, chain: dict) -> list[str]:
-    ids: list[str] = []
-    if chain.get("root_run_id"):
-        ids.append(chain["root_run_id"])
-    for run_id in storage.list_run_records():
-        run = storage.read_run_record_meta(run_id)
-        if run and run.get("chain_id") == chain_id and run_id not in ids:
-            ids.append(run_id)
-    for edge in storage.read_run_edges(chain_id):
-        for key in ("parent_run_id", "child_run_id"):
-            run_id = edge.get(key)
-            if run_id and run_id not in ids:
-                ids.append(run_id)
-    return ids
-
-
 def _collect_chain_detail(storage: Storage, chain_id: str) -> dict:
     chain = _require_chain(storage, chain_id)
-    run_ids = _chain_run_ids(storage, chain_id, chain)
+    run_ids = chain_run_ids(storage, chain_id, chain)
     runs = []
     inputs: dict[str, list[dict]] = {}
     outputs: dict[str, list[dict]] = {}
