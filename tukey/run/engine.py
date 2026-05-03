@@ -177,15 +177,25 @@ class RunEngine:
         if task_type != "chat_completion":
             raise UnsupportedTaskTypeError(f"Unsupported task_type: {task_type}")
         provider_id = slot.get("provider_id")
-        provider = self.config.get_provider(provider_id)
-        if not provider:
-            raise ValueError(f"Provider not found: {provider_id}")
+        provider = self._provider_for_version(version, provider_id)
         executor = TextCompletionExecutor(self.provider_factory(provider))
         return await executor.execute(
             messages=messages,
             model=slot["provider_model_id"],
             slot_snapshot=slot,
         )
+
+    def _provider_for_version(
+        self,
+        version: dict[str, Any],
+        provider_id: str | None,
+    ) -> dict[str, Any]:
+        live_provider = self.config.get_provider(provider_id) if provider_id else None
+        if not live_provider:
+            raise ValueError(f"Provider not found: {provider_id}")
+        provider = dict(version.get("provider_snapshot") or {})
+        provider["api_key"] = live_provider.get("api_key")
+        return provider
 
     def _build_messages(self, run_id: str, version: dict[str, Any]) -> list[dict[str, Any]]:
         slot = version["slot_snapshot"]

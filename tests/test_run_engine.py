@@ -116,6 +116,45 @@ async def test_run_engine_provider_failure_writes_failed_output(storage, config)
 
 
 @pytest.mark.asyncio
+async def test_run_engine_executes_with_frozen_provider_settings_and_live_secret(storage, config):
+    captured_providers = []
+    config_set, slot = _setup_config_set(storage, config)
+    config.update_provider(slot["provider_id"], {
+        "api_key": "sk-before-freeze",
+        "base_url": "https://frozen.test/v1",
+        "strip_model_prefix": True,
+    })
+    version = storage.freeze_config_version(
+        config_set["id"],
+        slot,
+        config.get_provider(slot["provider_id"]),
+    )
+    config.update_provider(slot["provider_id"], {
+        "api_key": "sk-current-secret",
+        "base_url": "https://changed.test/v1",
+        "strip_model_prefix": False,
+    })
+    run = _create_run(storage, config_set["id"], config_version_ids=[version["id"]])
+
+    def capture_provider(provider_config):
+        captured_providers.append(provider_config)
+        return MockTextProvider(["frozen provider ok"])
+
+    engine = RunEngine(storage, config, provider_factory=capture_provider)
+
+    await engine.execute_run(run["id"])
+
+    assert captured_providers == [{
+        "id": slot["provider_id"],
+        "provider": "openai",
+        "base_url": "https://frozen.test/v1",
+        "display_name": "Engine Provider",
+        "strip_model_prefix": True,
+        "api_key": "sk-current-secret",
+    }]
+
+
+@pytest.mark.asyncio
 async def test_run_engine_n_completions_and_retry_append_outputs(storage, config):
     provider = MockTextProvider(["a", "b", "retry"])
     config_set, _ = _setup_config_set(storage, config)

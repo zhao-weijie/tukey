@@ -132,6 +132,25 @@ def _validate_refs(storage: Storage, body: RunCreate) -> None:
         raise HTTPException(422, f"Parent runs not found: {missing_parents}")
 
 
+def _validate_run_output(storage: Storage, run: dict, output_data: dict) -> None:
+    config_version_id = output_data.get("config_version_id")
+    if config_version_id not in run.get("config_version_ids", []):
+        raise HTTPException(422, "Config version is not part of this run")
+
+    versions = {
+        version["id"]: version
+        for version in storage.read_config_versions(run["config_set_id"])
+    }
+    version = versions.get(config_version_id)
+    if not version:
+        raise HTTPException(422, "Config version not found")
+    if output_data.get("slot_id") != version["slot_id"]:
+        raise HTTPException(422, "Output slot does not match config version")
+    expected_model = version["slot_snapshot"]["provider_model_id"]
+    if output_data.get("provider_model_id") != expected_model:
+        raise HTTPException(422, "Output provider model does not match config version")
+
+
 def _append_event(storage: Storage, run_id: str, event: dict) -> dict:
     record = {
         "id": event.get("id", contracts.new_id()),
@@ -149,8 +168,10 @@ def create_run(body: RunCreate):
     storage = _s()
     _validate_refs(storage, body)
     run = contracts.make_run(body.model_dump(exclude={"inputs", "outputs", "events"}))
-    storage.write_run_record_meta(run["id"], run)
+    for output_data in body.outputs:
+        _validate_run_output(storage, run, output_data)
 
+    storage.write_run_record_meta(run["id"], run)
     for index, input_data in enumerate(body.inputs):
         input_record = dict(input_data)
         input_record.setdefault("input_index", index)
@@ -235,9 +256,9 @@ def get_run_outputs(run_id: str):
 def append_run_output(run_id: str, body: RunOutputCreate):
     storage = _s()
     run = _require_run(storage, run_id)
-    if body.config_version_id not in run.get("config_version_ids", []):
-        raise HTTPException(422, "Config version is not part of this run")
-    record = contracts.make_run_output(run_id, body.model_dump())
+    output_data = body.model_dump()
+    _validate_run_output(storage, run, output_data)
+    record = contracts.make_run_output(run_id, output_data)
     storage.append_run_output(run_id, record)
     return record
 

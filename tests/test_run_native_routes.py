@@ -237,6 +237,34 @@ def test_run_rejects_output_for_non_member_config_version(client):
     assert r.status_code == 422
 
 
+def test_run_output_validation_for_create_and_append_routes(client):
+    config_set, slot, version, run = _create_run(client)
+    valid_output = {
+        "config_version_id": version["id"],
+        "slot_id": slot["id"],
+        "provider_model_id": slot["provider_model_id"],
+        "status": "complete",
+        "text": "validated",
+    }
+    invalid_cases = [
+        {**valid_output, "config_version_id": "missing-version"},
+        {**valid_output, "slot_id": "wrong-slot"},
+        {**valid_output, "provider_model_id": "wrong-model"},
+    ]
+
+    for output in invalid_cases:
+        r = client.post("/api/runs", json={
+            "name": "Invalid Initial Output",
+            "config_set_id": config_set["id"],
+            "config_version_ids": [version["id"]],
+            "outputs": [output],
+        })
+        assert r.status_code == 422
+
+        r = client.post(f"/api/runs/{run['id']}/outputs", json=output)
+        assert r.status_code == 422
+
+
 def test_run_chain_edges_and_view_state(client):
     _, slot, version, parent = _create_run(client, status="complete")
     _, _, _, child = _create_run(client)
