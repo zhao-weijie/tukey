@@ -5,22 +5,31 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from tukey.config import ConfigManager
 from tukey.core import contracts
+from tukey.run import RunEngine
 from tukey.storage import Storage
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
 _storage: Storage | None = None
+_config: ConfigManager | None = None
 
 
-def init(storage: Storage) -> None:
-    global _storage
+def init(storage: Storage, config: ConfigManager | None = None) -> None:
+    global _storage, _config
     _storage = storage
+    _config = config
 
 
 def _s() -> Storage:
     assert _storage is not None
     return _storage
+
+
+def _c() -> ConfigManager:
+    assert _config is not None
+    return _config
 
 
 class RunCreate(BaseModel):
@@ -73,6 +82,12 @@ class RunOutputCreate(BaseModel):
 class RunEventCreate(BaseModel):
     type: str
     data: dict = {}
+
+
+class RunExecute(BaseModel):
+    inputs: list[RunInputCreate] = []
+    n: int = 1
+    created_by: str = "system"
 
 
 def _require_run(storage: Storage, run_id: str) -> dict:
@@ -162,6 +177,23 @@ def list_runs():
 @router.get("/{run_id}")
 def get_run(run_id: str):
     return _require_run(_s(), run_id)
+
+
+@router.post("/{run_id}/execute")
+async def execute_run(run_id: str, body: RunExecute | None = None):
+    storage = _s()
+    _require_run(storage, run_id)
+    body = body or RunExecute()
+    engine = RunEngine(storage, _c())
+    try:
+        return await engine.execute_run(
+            run_id,
+            inputs=[item.model_dump(exclude_none=True) for item in body.inputs],
+            n=body.n,
+            created_by=body.created_by,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @router.patch("/{run_id}")

@@ -53,7 +53,7 @@ def _init_routes(
     mcp_routes.init(config, mcp_manager)
     task_routes.init(storage)
     config_set_routes.init(storage, config)
-    run_routes.init(storage)
+    run_routes.init(storage, config)
     run_chain_routes.init(storage)
     eval_plan_routes.init(storage)
     schedule_routes.init(storage)

@@ -17,12 +17,13 @@ principles:
   - No migration from chatrooms or legacy experiments is required.
   - Keep JSON and JSONL local-first storage unless a strong reason emerges.
 current_status:
-  summary: "Phase 3 additive run, chain, eval-plan, schedule, annotation, and artifact REST routes are implemented; legacy app behavior is intentionally still present."
+  summary: "Phase 4 multimodal-ready RunEngine and explicit run execution route are implemented; legacy app behavior is intentionally still present."
   completed:
     - phase_1_storage_substrate
     - phase_2_routes_tasks_config_sets
     - phase_3_routes_runs_chains_annotations
-  next_recommended_slice: phase_4_multimodal_ready_run_engine
+    - phase_4_multimodal_ready_run_engine
+  next_recommended_slice: phase_5_interactive_adapter
 manual_smoke_tests:
   - id: manual_storage_smoke_2026_05_03
     status: passed
@@ -62,6 +63,23 @@ manual_smoke_tests:
       chain_edge_mapping_read_back: true
       annotation_targeted_output: true
       artifact_metadata_read_back: true
+  - id: manual_phase_4_live_execute_existing_provider_2026_05_03
+    status: passed
+    summary: "Executed a queued run through POST /api/runs/{run_id}/execute against the real default data dir using the existing OpenRouter provider-backed config set."
+    observed:
+      data_dir: "C:\\Users\\zhaow\\.tukey"
+      config_set_id: "e7fa9a31-1224-4921-8468-c39b8cf7eb9e"
+      run_id: "b2784b49-fb3f-498c-b6c9-222cb4ec6dcd"
+      provider_model_id: "openai/gpt-4o-mini"
+      run_status: "complete"
+      response_text: "phase4 live ok"
+      input_tokens: 15
+      output_tokens: 4
+      events:
+        - run_started
+        - input_recorded
+        - output_completed
+        - run_completed
 automated_tests:
   passing:
     - command: "uv run --extra dev pytest tests\\test_storage.py"
@@ -70,6 +88,8 @@ automated_tests:
       result: "18 passed"
     - command: "uv run --extra dev pytest tests\\test_run_native_routes.py tests\\test_storage.py"
       result: "24 passed"
+    - command: "uv run --extra dev pytest tests\\test_run_engine.py tests\\test_run_native_routes.py tests\\test_storage.py"
+      result: "30 passed"
   known_legacy_failures:
     - test: "tests/test_chat.py::test_export_import_roundtrip"
       reason: "Test expects GET export, current route implements POST export."
@@ -189,7 +209,7 @@ phases:
 
   - id: phase_4_multimodal_ready_run_engine
     title: "Multimodal-ready RunEngine with initial text executor"
-    status: pending
+    status: completed
     depends_on:
       - phase_2_routes_tasks_config_sets
       - phase_3_routes_runs_chains_annotations
@@ -202,6 +222,8 @@ phases:
         - tests/test_run_engine.py
       modify:
         - tukey/server/routes/runs.py
+        - tukey/server/app.py
+        - plan.yaml
     behavior:
       - "POST /api/runs can create queued records without execution."
       - "POST /api/runs/{run_id}/execute starts execution; POST /api/runs remains create-only unless this is explicitly revised."
@@ -223,6 +245,8 @@ phases:
       - "Retry appends new outputs rather than replacing existing outputs."
       - "Text executor persists content blocks and text projection."
       - "Unsupported image_generation or image_edit slot creates failed RunOutput with structured error."
+    verification:
+      - "uv run --extra dev pytest tests\\test_run_engine.py tests\\test_run_native_routes.py tests\\test_storage.py"
 
   - id: phase_5_interactive_adapter
     title: "Adapt one interactive fan-out path to canonical runs"
