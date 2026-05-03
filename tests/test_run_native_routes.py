@@ -34,6 +34,31 @@ def _create_slot(client, config_set_id, provider_id, model="openai/test-model"):
     return r.json()
 
 
+def _create_frozen_config_version(client):
+    provider = _create_provider(client)
+    config_set = _create_config_set(client)
+    slot = _create_slot(client, config_set["id"], provider["id"])
+    r = client.post(f"/api/config-sets/{config_set['id']}/versions:freeze", json={
+        "slot_id": slot["id"],
+        "first_used_run_id": "setup-run",
+    })
+    assert r.status_code == 201
+    return config_set, slot, r.json()
+
+
+def _create_run(client, status="queued"):
+    config_set, slot, version = _create_frozen_config_version(client)
+    r = client.post("/api/runs", json={
+        "name": "Route Run",
+        "status": status,
+        "kind": "agent",
+        "config_set_id": config_set["id"],
+        "config_version_ids": [version["id"]],
+    })
+    assert r.status_code == 201
+    return config_set, slot, version, r.json()
+
+
 def test_task_crud_and_soft_delete(client):
     r = client.post("/api/tasks", json={
         "name": "Support triage",
@@ -154,3 +179,201 @@ def test_config_version_freeze_404s_for_missing_slot(client):
         "slot_id": "missing-slot",
     })
     assert r.status_code == 404
+
+
+def test_run_crud_inputs_outputs_events_and_summary(client):
+    _, slot, version, run = _create_run(client)
+
+    r = client.post(f"/api/runs/{run['id']}/inputs", json={
+        "content": [{"type": "text", "text": "hello"}],
+        "source": {"type": "agent", "ref_id": "case-1"},
+    })
+    assert r.status_code == 201
+    assert r.json()["input_index"] == 0
+
+    r = client.post(f"/api/runs/{run['id']}/outputs", json={
+        "config_version_id": version["id"],
+        "slot_id": slot["id"],
+        "provider_model_id": slot["provider_model_id"],
+        "response_index": 0,
+        "status": "complete",
+        "content": [{"type": "text", "text": "hi"}],
+        "text": "hi",
+        "usage": {"input_tokens": 3, "output_tokens": 2},
+    })
+    assert r.status_code == 201
+    output = r.json()
+    assert output["status"] == "complete"
+
+    r = client.post(f"/api/runs/{run['id']}/events", json={
+        "type": "output_completed",
+        "data": {"output_id": output["id"]},
+    })
+    assert r.status_code == 201
+    assert r.json()["type"] == "output_completed"
+
+    r = client.patch(f"/api/runs/{run['id']}", json={"status": "complete"})
+    assert r.status_code == 200
+    assert r.json()["status"] == "complete"
+
+    assert len(client.get(f"/api/runs/{run['id']}/inputs").json()) == 1
+    assert len(client.get(f"/api/runs/{run['id']}/outputs").json()) == 1
+    assert len(client.get(f"/api/runs/{run['id']}/events").json()) == 1
+
+    r = client.get(f"/api/runs/{run['id']}/summary")
+    assert r.status_code == 200
+    summary = r.json()
+    assert summary["total_inputs"] == 1
+    assert summary["complete_outputs"] == 1
+
+
+def test_run_rejects_output_for_non_member_config_version(client):
+    _, slot, _, run = _create_run(client)
+    r = client.post(f"/api/runs/{run['id']}/outputs", json={
+        "config_version_id": "missing-version",
+        "slot_id": slot["id"],
+        "provider_model_id": slot["provider_model_id"],
+    })
+    assert r.status_code == 422
+
+
+def test_run_chain_edges_and_view_state(client):
+    _, slot, version, parent = _create_run(client, status="complete")
+    _, _, _, child = _create_run(client)
+    r = client.post(f"/api/runs/{parent['id']}/outputs", json={
+        "config_version_id": version["id"],
+        "slot_id": slot["id"],
+        "provider_model_id": slot["provider_model_id"],
+        "status": "complete",
+        "text": "parent output",
+    })
+    assert r.status_code == 201
+    output = r.json()
+
+    r = client.post("/api/run-chains", json={
+        "name": "Route Chain",
+        "root_run_id": parent["id"],
+    })
+    assert r.status_code == 201
+    chain = r.json()
+
+    r = client.post(f"/api/run-chains/{chain['id']}/edges", json={
+        "parent_run_id": parent["id"],
+        "child_run_id": child["id"],
+        "mapping": {slot["id"]: {"output_id": output["id"], "response_index": 0}},
+    })
+    assert r.status_code == 201
+    assert r.json()["mapping"][slot["id"]]["output_id"] == output["id"]
+
+    r = client.put(f"/api/run-chains/{chain['id']}/view-state", json={
+        "selected_outputs": {slot["id"]: output["id"]},
+        "pinned_output_ids": [output["id"]],
+        "collapsed_run_ids": [parent["id"]],
+    })
+    assert r.status_code == 200
+    assert r.json()["selected_outputs"][slot["id"]] == output["id"]
+
+    r = client.get(f"/api/run-chains/{chain['id']}/edges")
+    assert r.status_code == 200
+    assert len(r.json()) == 1
+
+
+def test_run_chain_edge_requires_parent_output(client):
+    _, _, _, parent = _create_run(client, status="complete")
+    _, _, _, child = _create_run(client)
+    chain = client.post("/api/run-chains", json={"name": "Bad Chain"}).json()
+    r = client.post(f"/api/run-chains/{chain['id']}/edges", json={
+        "parent_run_id": parent["id"],
+        "child_run_id": child["id"],
+        "mapping": {"slot": {"output_id": "missing-output", "response_index": 0}},
+    })
+    assert r.status_code == 422
+
+
+def test_eval_plan_and_schedule_metadata_only(client):
+    config_set = _create_config_set(client)
+    task = client.post("/api/tasks", json={
+        "name": "Eval task",
+        "default_config_set_id": config_set["id"],
+    }).json()
+
+    r = client.post("/api/eval-plans", json={
+        "task_id": task["id"],
+        "name": "Plan 1",
+        "brief": {"decision": "Choose the best support model"},
+        "config_set_ids": [config_set["id"]],
+    })
+    assert r.status_code == 201
+    plan = r.json()
+    assert plan["status"] == "draft"
+
+    r = client.post(f"/api/eval-plans/{plan['id']}/test-cases", json={
+        "test_cases": [{"turns": [{"role": "user", "content": "hello"}], "tags": ["smoke"]}],
+    })
+    assert r.status_code == 201
+    assert len(r.json()) == 1
+
+    r = client.post("/api/schedules", json={
+        "task_id": task["id"],
+        "eval_plan_id": plan["id"],
+        "config_set_id": config_set["id"],
+        "name": "Manual schedule",
+        "cadence": {"type": "manual"},
+    })
+    assert r.status_code == 201
+    schedule = r.json()
+    assert schedule["status"] == "active"
+
+    r = client.delete(f"/api/schedules/{schedule['id']}")
+    assert r.status_code == 204
+    assert client.get(f"/api/schedules/{schedule['id']}").json()["status"] == "paused"
+
+
+def test_annotations_and_artifacts_target_run_outputs(client):
+    _, slot, version, run = _create_run(client)
+    output = client.post(f"/api/runs/{run['id']}/outputs", json={
+        "config_version_id": version["id"],
+        "slot_id": slot["id"],
+        "provider_model_id": slot["provider_model_id"],
+        "status": "complete",
+        "text": "annotate me",
+    }).json()
+
+    r = client.post("/api/annotations", json={
+        "target": {"type": "output", "run_id": run["id"], "output_id": output["id"]},
+        "rating": "positive",
+        "judge": "human",
+        "comment": "good",
+    })
+    assert r.status_code == 201
+    annotation = r.json()
+
+    r = client.get(f"/api/annotations?run_id={run['id']}&output_id={output['id']}")
+    assert r.status_code == 200
+    assert [a["id"] for a in r.json()] == [annotation["id"]]
+
+    r = client.patch(f"/api/annotations/{annotation['id']}", json={"comment": "great"})
+    assert r.status_code == 200
+    assert r.json()["comment"] == "great"
+
+    r = client.post("/api/artifacts", json={
+        "run_id": run["id"],
+        "output_id": output["id"],
+        "kind": "output",
+        "modality": "image",
+        "mime_type": "image/png",
+        "filename": "result.png",
+        "path": "runs/run/artifacts/result.png",
+        "size_bytes": 42,
+        "sha256": "abc123",
+    })
+    assert r.status_code == 201
+    artifact = r.json()
+
+    r = client.get(f"/api/artifacts/{artifact['id']}")
+    assert r.status_code == 200
+    assert r.json()["filename"] == "result.png"
+
+    r = client.get(f"/api/runs/{run['id']}/artifacts")
+    assert r.status_code == 200
+    assert [a["id"] for a in r.json()] == [artifact["id"]]

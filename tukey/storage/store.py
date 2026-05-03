@@ -250,6 +250,12 @@ class Storage:
     def artifact_dir(self, run_id: str) -> Path:
         return self.run_record_dir(run_id) / "artifacts"
 
+    def append_artifact_meta(self, run_id: str, record: dict[str, Any]) -> None:
+        self.append_jsonl(self.run_record_dir(run_id) / "artifacts.jsonl", record)
+
+    def read_artifact_meta(self, run_id: str) -> list[dict[str, Any]]:
+        return self.read_jsonl(self.run_record_dir(run_id) / "artifacts.jsonl")
+
     # --- Run chains ---
 
     def list_run_chains(self) -> list[str]:

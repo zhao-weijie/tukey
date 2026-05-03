@@ -25,6 +25,12 @@ from tukey.server.routes import experiments as experiment_routes
 from tukey.server.routes import mcp as mcp_routes
 from tukey.server.routes import tasks as task_routes
 from tukey.server.routes import config_sets as config_set_routes
+from tukey.server.routes import runs as run_routes
+from tukey.server.routes import run_chains as run_chain_routes
+from tukey.server.routes import eval_plans as eval_plan_routes
+from tukey.server.routes import schedules as schedule_routes
+from tukey.server.routes import annotations as annotation_routes
+from tukey.server.routes import artifacts as artifact_routes
 from tukey.server import websocket as ws_routes
 from tukey.mcp.manager import McpManager
 
@@ -47,6 +53,12 @@ def _init_routes(
     mcp_routes.init(config, mcp_manager)
     task_routes.init(storage)
     config_set_routes.init(storage, config)
+    run_routes.init(storage)
+    run_chain_routes.init(storage)
+    eval_plan_routes.init(storage)
+    schedule_routes.init(storage)
+    annotation_routes.init(storage)
+    artifact_routes.init(storage)
     ws_routes.init(storage, config, mcp_manager)
 
 
@@ -93,6 +105,12 @@ def create_app(data_dir: str | None = None) -> FastAPI:
     app.include_router(mcp_routes.router)
     app.include_router(task_routes.router)
     app.include_router(config_set_routes.router)
+    app.include_router(run_routes.router)
+    app.include_router(run_chain_routes.router)
+    app.include_router(eval_plan_routes.router)
+    app.include_router(schedule_routes.router)
+    app.include_router(annotation_routes.router)
+    app.include_router(artifact_routes.router)
     app.include_router(ws_routes.router)
 
     @app.on_event("shutdown")

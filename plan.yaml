@@ -17,11 +17,12 @@ principles:
   - No migration from chatrooms or legacy experiments is required.
   - Keep JSON and JSONL local-first storage unless a strong reason emerges.
 current_status:
-  summary: "Phase 2 additive task/config-set REST routes are implemented; legacy app behavior is intentionally still present."
+  summary: "Phase 3 additive run, chain, eval-plan, schedule, annotation, and artifact REST routes are implemented; legacy app behavior is intentionally still present."
   completed:
     - phase_1_storage_substrate
     - phase_2_routes_tasks_config_sets
-  next_recommended_slice: phase_3_routes_runs_chains_annotations
+    - phase_3_routes_runs_chains_annotations
+  next_recommended_slice: phase_4_text_run_engine
 manual_smoke_tests:
   - id: manual_storage_smoke_2026_05_03
     status: passed
@@ -39,12 +40,36 @@ manual_smoke_tests:
       config_set_slot_order_updated: true
       config_version_reused_by_hash: true
       provider_secret_leaked: false
+  - id: manual_phase_3_api_smoke_2026_05_03
+    status: passed
+    summary: "Created run with input/output, child run, run-chain edge, annotation, and artifact through FastAPI TestClient."
+    observed:
+      run_inputs_read_back: true
+      run_outputs_read_back: true
+      chain_edge_mapping_read_back: true
+      annotation_targeted_output: true
+      artifact_metadata_read_back: true
+  - id: manual_phase_3_live_routes_existing_provider_2026_05_03
+    status: passed
+    summary: "Started Tukey on localhost and exercised new routes against the real default data dir using the existing OpenRouter provider record."
+    observed:
+      data_dir: "C:\\Users\\zhaow\\.tukey"
+      provider_display_name: "OpenRouter"
+      config_version_reused_by_hash: true
+      provider_secret_leaked: false
+      run_inputs_read_back: true
+      run_outputs_read_back: true
+      chain_edge_mapping_read_back: true
+      annotation_targeted_output: true
+      artifact_metadata_read_back: true
 automated_tests:
   passing:
     - command: "uv run --extra dev pytest tests\\test_storage.py"
       result: "12 passed"
     - command: "uv run --extra dev pytest tests\\test_run_native_routes.py tests\\test_storage.py"
       result: "18 passed"
+    - command: "uv run --extra dev pytest tests\\test_run_native_routes.py tests\\test_storage.py"
+      result: "24 passed"
   known_legacy_failures:
     - test: "tests/test_chat.py::test_export_import_roundtrip"
       reason: "Test expects GET export, current route implements POST export."
@@ -121,7 +146,7 @@ phases:
 
   - id: phase_3_routes_runs_chains_annotations
     title: "Additive REST routes for runs, run chains, annotations, artifacts, eval plans, and schedules"
-    status: pending
+    status: completed
     depends_on:
       - phase_2_routes_tasks_config_sets
     objective: "Expose the rest of the run-native storage surface before adding model execution."
