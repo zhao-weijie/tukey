@@ -22,7 +22,7 @@ current_status:
     - phase_1_storage_substrate
     - phase_2_routes_tasks_config_sets
     - phase_3_routes_runs_chains_annotations
-  next_recommended_slice: phase_4_text_run_engine
+  next_recommended_slice: phase_4_multimodal_ready_run_engine
 manual_smoke_tests:
   - id: manual_storage_smoke_2026_05_03
     status: passed
@@ -187,24 +187,32 @@ phases:
       - "Eval plans and schedules create metadata only, no execution path."
       - "Artifact metadata references local run artifact path."
 
-  - id: phase_4_text_run_engine
-    title: "Text-only RunEngine"
+  - id: phase_4_multimodal_ready_run_engine
+    title: "Multimodal-ready RunEngine with initial text executor"
     status: pending
     depends_on:
       - phase_2_routes_tasks_config_sets
       - phase_3_routes_runs_chains_annotations
-    objective: "Execute text inputs against frozen config versions and persist RunInput, RunOutput, and events."
+    objective: "Create a task-type-dispatched RunEngine that initially implements chat/text completions while preserving multimodal content-block and artifact contracts."
     files:
       create:
         - tukey/run/__init__.py
         - tukey/run/engine.py
+        - tukey/run/executors.py
         - tests/test_run_engine.py
       modify:
         - tukey/server/routes/runs.py
     behavior:
       - "POST /api/runs can create queued records without execution."
-      - "POST /api/runs/{run_id}/execute or POST /api/runs with execute=true starts text execution."
+      - "POST /api/runs/{run_id}/execute starts execution; POST /api/runs remains create-only unless this is explicitly revised."
       - "Freeze active config slots before execution."
+      - "Dispatch execution by slot_snapshot.task_type from each frozen config version."
+      - "Implement chat_completion first through a text provider adapter."
+      - "Stub unsupported image_generation, image_edit, embedding, and future task types as failed RunOutput records."
+      - "Normalize all RunInput and RunOutput payloads as ContentBlock[] before persistence."
+      - "Persist content: ContentBlock[] for every output."
+      - "Populate text only as a convenience projection for text-like outputs."
+      - "Keep provider adapters separate from RunEngine contracts."
       - "One RunOutput per config_version_id per response_index."
       - "Provider failures become failed RunOutput records."
       - "Events append lifecycle records for run_started, input_recorded, output_completed, output_failed, run_completed, run_failed."
@@ -213,12 +221,14 @@ phases:
       - "Mock provider failure writes failed output without failing entire storage write."
       - "n completions append response_index 0..n-1."
       - "Retry appends new outputs rather than replacing existing outputs."
+      - "Text executor persists content blocks and text projection."
+      - "Unsupported image_generation or image_edit slot creates failed RunOutput with structured error."
 
   - id: phase_5_interactive_adapter
     title: "Adapt one interactive fan-out path to canonical runs"
     status: pending
     depends_on:
-      - phase_4_text_run_engine
+      - phase_4_multimodal_ready_run_engine
     objective: "Keep legacy UI stable while making interactive send create Run and RunOutput records as canonical targets."
     files:
       modify:
@@ -258,7 +268,7 @@ phases:
     title: "Eval plans and agent-ready workflow over runs"
     status: pending
     depends_on:
-      - phase_4_text_run_engine
+      - phase_4_multimodal_ready_run_engine
       - phase_6_run_chain_continuation
     objective: "Port formal eval and agent-driven workflows onto runs without a second execution engine."
     files:
@@ -279,7 +289,7 @@ phases:
     title: "Run-native synthesis bundle"
     status: pending
     depends_on:
-      - phase_4_text_run_engine
+      - phase_4_multimodal_ready_run_engine
     objective: "Replace ExperimentBundle source contract with RunBundle built from runs, outputs, annotations, config versions, tasks, and optional eval plans."
     files:
       modify:
@@ -295,12 +305,12 @@ phases:
       - "Interactive runs, run chains, eval plans, and scheduled runs share the same synthesis path."
 
   - id: phase_9_multimodal_artifacts
-    title: "Multimodal artifact storage and contracts"
+    title: "Artifact-backed multimodal executors"
     status: pending
     depends_on:
-      - phase_4_text_run_engine
+      - phase_4_multimodal_ready_run_engine
       - phase_3_routes_runs_chains_annotations
-    objective: "Support image/file content blocks and local artifact metadata in run inputs and outputs."
+    objective: "Extend the existing task-type executor architecture with artifact-backed image generation/editing and richer multimodal content blocks."
     files:
       modify:
         - tukey/core/contracts.py
@@ -313,13 +323,14 @@ phases:
       - "Raw artifacts live under runs/{run_id}/artifacts."
       - "RunInput and RunOutput content blocks reference artifact_id."
       - "Artifacts include sha256, size, mime_type, modality, and local path."
+      - "Image executors plug into the Phase 4 task_type dispatch instead of retrofitting a separate engine."
 
   - id: phase_10_frontend_replacement
     title: "Replace chatroom UI with task/config-set/run-chain views"
     status: pending
     depends_on:
       - phase_2_routes_tasks_config_sets
-      - phase_4_text_run_engine
+      - phase_4_multimodal_ready_run_engine
       - phase_6_run_chain_continuation
     objective: "Move frontend state and primary UI from chatrooms/messages to tasks, config sets, runs, outputs, and run chains."
     files:

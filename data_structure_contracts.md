@@ -812,7 +812,7 @@ interface RunOutput {
   response_index: number;
   status: "running" | "complete" | "failed" | "cancelled";
   content: ContentBlock[];
-  text?: string; // convenience projection for text outputs
+  text?: string; // convenience projection only; content is canonical
   error?: {
     message: string;
     type?: string;
@@ -839,6 +839,8 @@ Contract rules:
 - Retry/additional responses create new `RunOutput` rows, not a replacement.
 - The first successful output can be marked in view state, not by deleting failed outputs.
 - Errors are outputs with `status: "failed"`, preserving traceability.
+- `content` is the canonical output body for every modality.
+- `text` is a convenience projection for text-like outputs only and must not be used as the canonical result payload.
 
 ### Run Chain Contract
 
@@ -1180,7 +1182,11 @@ Storage:
 
 Backend execution:
 
-- Extract a `RunEngine` that accepts config versions plus inputs and emits run events.
+- Extract a multimodal-ready `RunEngine` that accepts config versions plus content-block inputs and emits run events.
+- `RunEngine` dispatches by `ConfigSlot.task_type` from the frozen config version, including `chat_completion`, `image_generation`, `image_edit`, and future task types.
+- The initial executor may implement only `chat_completion`, but the engine contract must normalize every input and output as `ContentBlock[]`.
+- Existing text-shaped provider responses are adapted into run-native execution results before persistence; provider protocols are not the engine contract.
+- Unsupported task types create failed `RunOutput` records with structured errors rather than crashing or creating a second execution path.
 - Make interactive, eval, scheduled, and agent execution all call `RunEngine`.
 - Move current chat `send_message` and legacy experiment `_execute_pair` logic behind the shared run contract.
 - Add queue/progress/cancel hooks before expanding automated batches.
@@ -1222,14 +1228,14 @@ Codex skill/plugin:
 
 1. Add future data types and storage helpers without wiring UI.
 2. Add task/config-set CRUD and config-version freezing.
-3. Add run CRUD and a text-only `RunEngine`.
+3. Add run CRUD and a multimodal-ready `RunEngine` with an initial chat/text executor.
 4. Adapt interactive send to create `Run` and `RunOutput` records.
 5. Add run-chain creation and continuation mapping.
 6. Add optional eval plans backed by runs; port legacy experiment behavior onto this path.
 7. Add schedules for cron/agent model monitoring.
 8. Unify annotations around run/output targets.
 9. Move synthesis to run-native bundles.
-10. Add artifact storage and multimodal output blocks.
+10. Extend artifact-backed multimodal executors for image generation/editing and richer content blocks.
 11. Replace frontend chatroom surfaces with task/config-set/run-chain views.
 
 ### Non-Goals For The Redesign
