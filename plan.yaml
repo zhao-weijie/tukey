@@ -17,7 +17,7 @@ principles:
   - No migration from chatrooms or legacy experiments is required.
   - Keep JSON and JSONL local-first storage unless a strong reason emerges.
 current_status:
-  summary: "Phase 5 clean-cut run-native interactive UI is implemented. Backend multimodal run execution now preserves image/artifact inputs, supports image generation/editing task types, and persists image outputs as artifacts."
+  summary: "Phase 5 clean-cut run-native interactive UI is implemented. Backend multimodal run execution preserves image/artifact inputs, supports image generation/editing task types, persists image outputs as artifacts, and the frontend can render image artifacts plus attach images for image-edit runs."
   completed:
     - phase_1_storage_substrate
     - phase_2_routes_tasks_config_sets
@@ -25,7 +25,7 @@ current_status:
     - phase_4_multimodal_ready_run_engine
     - phase_5_clean_cut_run_native_interactive_ui
     - phase_9_multimodal_artifacts
-  next_recommended_slice: p0_parallel_codex_eval_and_multimodal_frontend
+  next_recommended_slice: p0_codex_live_eval_path
 parallel_workstreams:
   - id: p0_codex_live_eval_path
     title: "Codex-driven live evaluation path"
@@ -60,7 +60,7 @@ parallel_workstreams:
   - id: p0_multimodal_frontend_review
     title: "Multimodal frontend review path"
     priority: P0
-    status: ready
+    status: completed
     goal_refs:
       - "Add multimodal completions e.g. image editing and generation."
     scope:
@@ -167,6 +167,10 @@ automated_tests:
     - command: "cd ui && npm run build"
       result: "passed with Vite chunk-size warning"
     - command: "uv run pytest tests/test_run_engine.py tests/test_providers.py tests/test_artifacts.py tests/test_run_native_routes.py"
+      result: "43 passed"
+    - command: "cd ui && npm run build"
+      result: "passed with Vite chunk-size warning"
+    - command: "uv run --extra dev pytest tests/test_run_engine.py tests/test_providers.py tests/test_artifacts.py tests/test_run_native_routes.py"
       result: "43 passed"
   known_legacy_failures:
     - test: "tests/test_chat.py::test_export_import_roundtrip"

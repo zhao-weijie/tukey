@@ -88,8 +88,10 @@ export interface ContentBlock {
   type: string;
   text?: string;
   artifact_id?: string;
+  url?: string;
   mime_type?: string;
   filename?: string;
+  detail?: string;
 }
 
 export interface RunInput {
@@ -127,6 +129,21 @@ export interface Annotation {
   updated_at: string;
 }
 
+export interface Artifact {
+  id: string;
+  run_id: string;
+  output_id?: string | null;
+  kind: string;
+  modality: string;
+  mime_type: string;
+  filename: string;
+  path: string;
+  size_bytes?: number | null;
+  sha256?: string | null;
+  created_at: string;
+  metadata: Record<string, unknown>;
+}
+
 export interface RunChainDetail {
   chain: RunChain;
   edges: any[];
@@ -136,7 +153,7 @@ export interface RunChainDetail {
   outputs: Record<string, RunOutput[]>;
   events: Record<string, any[]>;
   annotations: Record<string, Annotation[]>;
-  artifacts: Record<string, any[]>;
+  artifacts: Record<string, Artifact[]>;
   config_sets: ConfigSet[];
   config_slots: Record<string, ConfigSlot[]>;
   config_versions: Record<string, any[]>;

@@ -71,6 +71,8 @@ export const apiClient = {
       body: JSON.stringify(data),
     }),
   getRunOutputs: (id: string) => api<any[]>(`/api/runs/${id}/outputs`),
+  artifactContentUrl: (artifactId: string) =>
+    `/api/artifacts/${encodeURIComponent(artifactId)}/content`,
 
   listRunAnnotations: (params: { run_id?: string; output_id?: string } = {}) => {
     const query = new URLSearchParams();
