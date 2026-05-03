@@ -1,3 +1,106 @@
+## 2026-05-03 goal gap triage from frontend smoke
+
+This ranking is against `2026-05-03_goals.md`, not against general product quality. Some lower-ranked issues are real bugs or polish gaps, but they are not necessarily critical path for the May 3 goals.
+
+### P0 critical path: Codex-driven live evaluation path is not productized
+Related goals:
+- Must have: "Codex (the agent) - driven evaluation case that can complete in <3 minutes live."
+- Must have: "Skill or plugin that enables Codex agent to discover tukey and use its features easily."
+- Nice to have: live eval comparing GPT5.5 against a frontier open-source OpenRouter model.
+
+Observed status: a tiny browser-driven text fan-out can be completed manually in under 3 minutes if providers/config sets already exist, but there is no packaged Codex workflow, Tukey skill/plugin, guided command, or ready eval script that an agent can discover and run without inspecting the repo/API.
+
+Why it matters: this is one of the core demos in the goals doc. The current app proves the substrate works, but the agent-facing happy path is still implicit.
+
+Existing issues:
+- `(feature) Codex-driven live evaluation path under 3 minutes`
+- `(feature) Codex skill/plugin for Tukey discovery and operation`
+- `(usability) Agent-driven eval/run workflow is not yet reviewable in the frontend`
+- `(usability) Configuration preflight is too shallow for automated runs`
+
+Recommended next slice: create a small blessed workflow that selects or creates a config set, runs 2-4 prompts, reports outputs/metadata, and leaves reviewable run-chain records in the UI. Package its instructions in a Codex skill or plugin.
+
+### P0 critical path: multimodal is backend-ready but not frontend-reviewable
+Related goal:
+- Must have: "Add multimodal completions e.g. image editing and generation."
+
+Observed status: backend task types and artifact storage exist, and config slots expose `image_generation` / `image_edit`. The visible frontend still has no image upload/attachment control for image editing, no first-class image prompt/run input flow, and image outputs render as placeholder text instead of displaying artifact content.
+
+Why it matters: the must-have says multimodal completions, and a demo user will judge this in the browser. Backend-only support is not enough for a product demo unless the demo is explicitly API-only.
+
+Existing issue:
+- `(feature) Add multimodal completions for image generation and editing`
+
+Recommended next slice: add image output rendering via `/api/artifacts/{artifact_id}/content`, then add minimal image input attachment for `image_edit`. A basic gallery/review surface is more important than advanced annotation in the first pass.
+
+### P1 important: chained-run UI exists but not DAG/progressive-disclosure management
+Related goals:
+- Must have: runs/configs primitives with chained runs replacing chat sessions.
+- Should have: "New UI to manage chained runs (directed acyclic graphs with progressive disclosure on nodes)."
+
+Observed status: the app now uses tasks, config sets, run chains, runs, and outputs in the main UI. The visible chain view is still a mostly linear conversation with arrows. It does not expose branches, selected-output continuation, per-slot lineage mapping, or node-level progressive disclosure.
+
+Why it matters: the main data-structure redesign goal is substantially met, but the "directed acyclic graph" management goal is not. This is less blocking than the Codex and multimodal demos, because the current linear chain can still demonstrate the new primitives.
+
+Existing issues:
+- `(redesign) Replace chatrooms and experiments with tasks, config sets, runs, and chained runs`
+- `(design) New UI for config sets and chained runs`
+- `(improvement) Stack past run responses instead of showing all ResponseCards`
+
+Recommended next slice: implement selected-output continuation first, then surface lineage/branches progressively in the run block UI. Avoid a full graph editor unless branching becomes genuinely hard to understand.
+
+### P1 important: onboarding/docs still describe legacy chatrooms
+Status: addressed in README/CLAUDE docs cleanup.
+
+Related goal:
+- Must have: "Easy deployment/discovery/onboarding for Codex users (one command line, <1 minute to first run)."
+
+Observed status: the app has guided setup and `uv run tukey` works locally, but `README.md` still describes chatrooms, experiments, legacy search/import/export, and `/api/chat/*` examples. That undercuts discoverability for humans and agents.
+
+Resolution notes: `README.md` now documents tasks, config sets, immutable config versions, runs, run chains, run-native search/export, and the active `/api/runs/{run_id}/execute` flow. `CLAUDE.md` now has a current-product-contract warning above the historical exploration dump so agents do not treat stale chatroom notes as authoritative.
+
+Why it matters: the browser flow is moving in the right direction, but stale docs make the run-native redesign hard to discover and can send Codex down legacy routes.
+
+Existing issue:
+- `(feature) One-command onboarding for Codex users`
+
+Recommended next slice: update README quickstart and REST example to tasks/config sets/runs/run chains. Add a "Codex quick path" section that maps directly to the planned skill/plugin.
+
+### P2 useful: frontend run-chain polish gaps
+Related goals:
+- Must have: UI designed/improved with ChatGPT Image 2.
+- Should have: new UI to manage chained runs.
+
+Observed status from browser smoke:
+- Config editor can overflow horizontally and clip the second slot at normal in-app browser width.
+- After a run completes, the view does not auto-scroll to the newly created run, so fresh results can be below the viewport.
+- Search icon has no accessible label; `Ctrl+K` did not open search in the in-app browser attempt, though clicking the icon did.
+- Search briefly shows "No results" during debounce before results appear.
+- A queued run with no outputs appears inline without enough explanation or recovery affordance.
+
+Why it matters: these affect confidence and demo smoothness, but they do not block proving the run-native substrate or text fan-out.
+
+Existing issues:
+- `(design) New UI for config sets and chained runs`
+- `(improvement) Response card layout and comparison UX`
+- `(improvement) Run input box and default conversation-view width for user inputs should be narrower and centered.`
+- `(legacy bug) Having more than 3 model configurations expands the right panel container beyond the visible screen area` is legacy, but the new config editor has a similar overflow family of problem.
+
+Recommended next slice: fix auto-scroll and image rendering first if demo polish matters. Defer deeper layout redesign until the next visual-design pass.
+
+### P3 not critical path for May 3 goals
+Related goals:
+- Nice to have: OpenRouter new-model monitoring.
+- Nice to have: live GPT5.5 vs frontier open-source model in pi-mono.
+
+Observed status: no visible scheduled monitoring UI or ready-made model-comparison demo was found during the smoke test.
+
+Why it matters: these are nice-to-have in the goals doc. Do not let them preempt the P0 Codex workflow and multimodal UI unless the demo explicitly shifts toward model monitoring.
+
+Existing issues:
+- `(feature) Codex-driven live evaluation path under 3 minutes`
+- Scheduled monitoring is covered in `requirements.md` but should get its own implementation issue when it becomes a near-term slice.
+
 ## (legacy bug) Having more than 3 model configurations expands the right panel container beyond the visible screen area
 Severity: Major
 
