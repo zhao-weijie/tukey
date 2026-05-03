@@ -52,49 +52,42 @@ An eval plan is a thin workflow object for durable criteria, test cases/prompt s
 
 ## Near-term priorities
 
-- Multimodal runs: support image generation and image editing as first-class run outputs with local artifact storage and UI review.
+- Run-chain continuation: use selected prior outputs per slot/config version as explicit follow-up context.
+- Eval-plan execution: port formal eval and agent-driven workflows onto runs without reviving experiments as an execution primitive.
+- Run-native synthesis: replace the legacy `ExperimentBundle` source contract with a `RunBundle` built from runs, outputs, annotations, config versions, tasks, and optional eval plans.
 - Agent-driven evaluation: provide a Codex-driven happy path that can complete a meaningful local evaluation in under 3 minutes.
 - Codex discoverability: provide a skill or plugin that lets Codex understand Tukey's concepts, commands, API surface, and safe workflows.
-- Onboarding: support one-command setup/start and aim for under 1 minute to first local run for Codex users.
-- Chained-run UI: replace chatroom UI with config-set and run-chain management using progressive disclosure for DAG structure.
 - Scheduled evals: support cron/agent workflows for checking newly available models and running selected tasks without hardcoded model IDs.
+- Legacy surface retirement: keep old chat and experiment routes only as temporary compatibility surfaces until replacement export/import, eval execution, and synthesis paths are verified.
 
 ## Implementation status
 
-Note: implementation status below describes the current pre-redesign app. Chatroom/chat/experiment references are legacy implementation facts, not target primitives.
+Status as of `plan.yaml` updated on 2026-05-03 and spot-checked against the codebase. The active product surface is now run-native. Legacy chatroom/chat/experiment routes still exist, but they are compatibility surfaces and are not target product primitives.
 
 ### Complete
-- US1.1 API configuration and model selection — provider CRUD, model ID entry, model-aware config (capabilities endpoint)
-- US1.2 Configuration persistence — API keys and configs saved to ~/.tukey/
-- US1.3 Chat persistence — chatrooms persist models, configs, and conversation history
-- US1.4 Response comparison — parallel fan-out with streaming, side-by-side display, multiple completions per model (n=1–9), per-model response cycling, additive regeneration
-- US1.5 Search — full-text search across chatrooms, chats, and messages via /api/search
-- US2.1 Independent configuration — system prompt, temperature, max_tokens, top_p, reasoning_effort (conditional on model capabilities)
-- US2.2 Broadcast configuration — "Apply to all" per field across models in a chatroom
-- US3.1 Data sovereignty — all data in ~/.tukey/, no cloud sync
-- US3.2 Chat import/export — per-chatroom JSON export/import via sidebar and REST endpoints
-- US3.3 Experiment reproducibility — manifest endpoint, chat replay, full input recording
-- US3.4 Response metadata — tokens in/out, cost, duration, tok/s per response (toggle via ChartBar icon)
-- US4 Programmatic interface — TukeyClient SDK (httpx), provider/chatroom/chat/message CRUD, run_batch, manifest, replay
-- UX: Responsive sidebar — overlay drawer on small screens (<768px) with backdrop, auto-close on selection
-- UX: Delete confirmations — browser confirm dialog before deleting chatrooms or chats
-- UX: Loading skeleton — pulsing placeholder cards shown between send and first streaming chunk
-- UX: Welcome flow — guided setup renders within the chat area (sidebar visible) instead of a full-screen takeover; "I already have API keys" opens the existing ProviderSetup dialog; OpenRouter quick-start flow creates provider + sample chatroom in one step
-- UX: Native folder picker — data directory selection uses the system file dialog (tkinter) instead of manual path entry
-- Fix: Custom OpenAI-compatible gateway — correct SSE parsing, finish_reason handling, stream_options support, strip model prefix before sending to API
-- SUS6 Copy responses — copy full response (button in card header) and copy individual fenced code blocks (hover button)
-- SUS7 Improve readability — LLM responses rendered as markdown (headings, lists, tables, code blocks with syntax highlighting); user message newlines preserved via whitespace-pre-wrap
-
-- US5.2 Human annotation (chat) — text-range annotation on chat response cards: select text → rate (thumbs up/down) + comment → highlights persist to backend (annotations.jsonl). Schema uses W3C-aligned nested target (target.source + target.selector with TextQuoteSelector). Annotations included in chatroom export/import. Covers US5.2.2–5.2.8. US5.2.1 replaced with automatic popover on selection; US5.2.9 deferred.
+- Phase 1 storage substrate: run-native contracts and local JSON/JSONL storage helpers for tasks, config sets, immutable config versions, runs, run chains, annotations, artifacts, eval plans, and schedules.
+- Phase 2 task/config-set API: REST CRUD for tasks, config sets, slots, and config-version freezing/reuse.
+- Phase 3 run-native API surface: REST routes for runs, run inputs, outputs, events, run chains, lineage edges, view state, annotations, artifacts, eval plans, and schedules.
+- Phase 4 run engine: `POST /api/runs/{run_id}/execute` freezes config slots, records run inputs, dispatches by `task_type`, appends outputs/events, and treats provider failures as failed output records.
+- Phase 5 clean-cut run-native interactive UI: the active frontend uses tasks, config sets, run chains, runs, outputs, annotations, providers, and MCP servers through `tukeyStore`; the sidebar lists tasks/run chains rather than legacy chatrooms.
+- Phase 9 multimodal artifacts: text, image-generation, and image-edit executors are implemented; run inputs preserve text/image/artifact content blocks; generated image outputs are persisted as local artifacts with metadata and content-serving routes.
+- Run-chain detail/export: `/api/run-chains/{chain_id}/detail` aggregates chain runs, inputs, outputs, events, annotations, artifacts, config sets, slots, and versions; `/api/run-chains/{chain_id}/export` emits a run-chain export bundle.
+- Run-native search: `/api/search` indexes active tasks, run chains, run names, run inputs, outputs, and annotation comments, returning one result per visible chain context for run/input/output/annotation matches.
+- Provider/config basics: provider CRUD, model ID entry, model capabilities, OpenAI-compatible gateway handling, MCP server configuration, and data-directory switching remain available.
+- Local-first persistence: data is stored under the configured local Tukey data directory, defaulting to `~/.tukey/`; native folder picker is available through the backend.
+- Response review basics: run-output cards support response rendering, copy affordances, metadata, and run-output-targeted annotations.
+- Verification recorded in `plan.yaml`: focused run-native/storage/run-engine/artifact/provider tests pass, UI build passes with the known Vite chunk-size warning, and a localhost health smoke passed.
 
 ### In progress
-- Legacy US5.1, 5.3, 5.4 Experiment framework — backend complete (experiment CRUD, test cases, run execution with multi-turn + concurrency, annotations, summary, REST API, SDK). Frontend UI not yet built.
-
-### In progress
-- Legacy US6 Synthesis — data contract (`ExperimentBundle`) and tool protocol (`SynthesisTool`) complete. Built-in tools (`basic_stats`, `tfidf`) working. CLI supports both chatrooms and experiments. Frontend UI not yet built. Target redesign should replace this source contract with a run-native bundle.
+- Phase 6 run-chain continuation is the next recommended slice. Follow-up runs currently record parent run IDs and edges, but selected-output-per-slot continuation mapping is not yet implemented end to end.
+- Phase 7 eval plans and agent workflow are planned over runs. Eval-plan and schedule metadata routes exist, but formal eval execution still needs to be ported from legacy experiments to the run engine.
+- Phase 8 synthesis is still legacy-backed. `ExperimentBundle`, `SynthesisTool`, `basic_stats`, `tfidf`, and the CLI exist, but the target `RunBundle` contract is not implemented yet.
 
 ### Not started
-- SUS1–SUS5 Stretch stories (except SUS6, SUS7)
+- Scheduled model monitoring execution over runs.
+- Codex skill/plugin for agent discovery and one-command guided evaluation.
+- Legacy chat/experiment route removal after run-native replacement paths are verified.
+- SUS1-SUS5 stretch stories.
 
 ## Core user stories
 
