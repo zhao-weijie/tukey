@@ -1,7 +1,9 @@
-## (bug) Having more than 3 model configurations expands the right panel container beyond the visible screen area
+## (legacy bug) Having more than 3 model configurations expands the right panel container beyond the visible screen area
 Severity: Major
 
-Impact: Unable to access "Hide Config" button. Expected behavior: Model configurations that overflow behave similarly to ResponseCarousel which allow horizontal scrolling. The top bar that contains the "Hide Config" button and the chatroom/chat name needs to strictly fill only the available screen width (after accounting for the left sidenav).
+Impact: Unable to access "Hide Config" button in the current pre-redesign chatroom UI. Expected behavior: Model configurations that overflow behave similarly to ResponseCarousel which allow horizontal scrolling. The top bar that contains the "Hide Config" button and the chatroom/chat name needs to strictly fill only the available screen width (after accounting for the left sidenav).
+
+Decision: this is superseded if the config-set/run-chain redesign lands first. Do not spend significant time fixing the legacy chatroom layout unless it blocks near-term demos.
 
 ## (bug) Clicking the "Browse" button in the DirectoryDialog displays a "failed to fetch" error
 Severity: Major
@@ -42,17 +44,75 @@ Looking at the server console revealed this error
 )
 libc++abi: terminating due to uncaught exception of type NSException
 ```
+## (redesign) Replace chatrooms and experiments with tasks, config sets, runs, and chained runs
+Priority: high
 
-## (improvement) Allow per-model manual retries and additional responses
+Problem: chatrooms are a thin container around the things Tukey actually cares about: reusable model/tool/prompt configurations, execution records, outputs, annotations, and lineage. They make model configs feel like mutable chat-local UI state, which is bad for reproducibility and traceability. It is like losing the methodology and experiment conditions of a scientific experiment.
+
+Decisions:
+- Kill chatrooms as a product/data primitive. No migration support is required.
+- Kill experiments as an execution/data primitive. Formal evals should be a workflow over runs, not a separate run engine.
+- Support exploratory comparison, formal evals, and agent/cron-driven monitoring with the same run substrate.
+- Use user-facing vocabulary around **task**, **use case**, **eval**, **config set**, **run**, and **run chain**.
+
+Target model:
+- **Task / Use Case**: optional organizing object for what the user is trying to evaluate, such as "support email triage" or "invoice field extraction".
+- **Config Set**: reusable collection of model/config slots. A slot includes provider route, model ID, display name, system prompt, sampling params, response format, tools, MCP servers, and any provider-specific extra params.
+- **Config Version**: immutable snapshot of a config slot once used. Used versions are append-only and must remain recoverable even if the active config set is edited, archived, or deleted from the visible UI.
+- **Run**: execution of one prompt/test case/prompt set against one config set. A run records exact config versions, inputs, outputs, metadata, cost, latency, errors, annotations, and selected/pinned responses.
+- **Run Chain**: chat-like continuation built by linking a run to selected outputs from prior runs. A chain can look like a chat in the UI, but its data model should preserve per-model/per-response lineage instead of a vague shared chat history.
+- **Eval Plan**: optional planning object for durable criteria, test cases/prompt sets, config sets, and schedules. It creates or groups runs but is not an execution primitive.
+- **Schedule**: optional cron/agent automation over a task/eval plan/config set, used for new-model monitoring and recurring evals.
+- **View**: UI organization over runs and chains, such as conversation view, comparison grid, eval table, model-monitoring dashboard, or semantic similarity grouping.
+
+Requirements:
+- Chats/sessions should become a view over chained runs, not their own persistence primitive.
+- Follow-up runs must be able to continue from different selected response variants per model/config slot.
+- Deleting/removing a config from the active UI must never delete a config version that has been used by any run.
+- Exploratory comparisons, formal evals, scheduled evals, and agent-driven runs should use the same run/config-set primitives.
+- Eval plans are optional orchestration/grouping objects. They must not contain a second execution path.
+- Refer to `SUS8` in `requirements.md`.
+
+## (improvement) Allow per-config-slot manual retries and additional responses
 Priority: high
 Problem: Some models fail while others succeed sometimes due to model quality or API/provider issues. It is not currently possible to retry just for the failed models.
 
 The first successful response should be shown as default.
 
+## (feature) Add multimodal completions for image generation and editing
+Priority: high
+Problem: Tukey currently centers text completions, but model evaluation increasingly includes image generation/editing and other multimodal outputs. Users need to compare multimodal providers/models with the same reproducibility guarantees as text runs.
+
+Desired behavior: runs can include multimodal inputs and outputs, including image generation and image editing. Outputs should be stored locally, linked from run records, and reviewable/annotatable in the UI.
+
+## (feature) Codex-driven live evaluation path under 3 minutes
+Priority: high
+Problem: Tukey's agent-driven value proposition needs a short, reliable demonstration where Codex can discover Tukey, create or select a config set, run a small evaluation, and summarize/review results live.
+
+Desired behavior: provide one happy-path agent workflow that completes in under 3 minutes on a local machine, using a small prompt/test set and a small config set. The workflow should exercise config sets, runs, outputs, metadata, and review/summary surfaces.
+
+## (feature) Codex skill/plugin for Tukey discovery and operation
+Priority: high
+Problem: Codex should be able to discover Tukey's capabilities and use them without reverse-engineering the repo or REST API each time.
+
+Desired behavior: provide a Codex skill or plugin that documents Tukey's core concepts, available commands/API paths, common workflows, and safe defaults for local evaluation runs.
+
+## (feature) One-command onboarding for Codex users
+Priority: high
+Problem: Tukey needs easy deployment/discovery for agent users. A new Codex user should get from install to first meaningful run in under one minute.
+
+Desired behavior: provide a one-command path that installs/starts Tukey, verifies provider setup or guides quick setup, and creates a minimal first config set/run. Current PyPI distribution can remain, but alternatives should be considered if they reduce time-to-first-run.
+
+## (design) New UI for config sets and chained runs
+Priority: high
+Problem: Replacing chatrooms requires a UI that can show config sets, runs, and run chains without overwhelming users. A raw DAG editor is likely too heavy for the primary surface.
+
+Desired behavior: design a conversation-like chained-run view with progressive disclosure. The main path should feel like chat/comparison; lineage, branches, retries, and selected-response dependencies should be available on demand. Use ChatGPT Image 2 or equivalent visual design support to explore layouts before implementation.
+
 ## (improvement) More flexible model/provider/config in a particular configuration "slot" instead of deleting
 Priority: normal
 
-## (improvement) Tool Choice and Response Format options in Model Config do not have a "broadcast" option
+## (improvement) Tool Choice and Response Format options in config slots do not have a "broadcast" option
 Priority: normal
 ## (improvement) Allow individual response cards to be expanded in width for easier reading of long responses
 Priority: high
@@ -66,38 +126,38 @@ As a user I want to be able to choose which response cards are next to each othe
 
 As a user I want to choose which response cards are currently visible so that I can focus on comparing the responses I care about most.
 
-## (improvement) Stack past responses instead of showing all ResponseCards
+## (improvement) Stack past run responses instead of showing all ResponseCards
 Priority: normal
 
-Idea: stack and show only the first pinned response or the one with the most positive annotations for past turns. Only current turn responses are shown in full. This reduces visual clutter. The user gets a button to expand the full Response Carousele to full width.
+Idea: stack and show only the first pinned response or the one with the most positive annotations for past runs in a chain. Only the current run's responses are shown in full. This reduces visual clutter. The user gets a button to expand the full Response Carousel to full width.
 
 Related idea: this might work well together with horizontal stack-ranking where the user drags conversation ResponseCards to rank them horizontally. Drag handle rather than the entire ResponseCard component as target should be easier to use.
 
 
-## (improvement) Chat stats for per-model metadata in a chat
+## (improvement) Run-chain stats for per-config-slot metadata
 Priority: normal
-As a user I want a quick view of how each model performed in the chat so that I can decide which one to use as default.  
-When hovering the chat name in the top bar, a popover/dropdown appears showing the stats for each model.
+As a user I want a quick view of how each model/config slot performed across a run chain so that I can decide which one to use as default or promote into a new config set.
+When hovering the run-chain name in the top bar, a popover/dropdown appears showing the stats for each model/config slot.
 
 Stats to include: cost, input tokens, output tokens, latency, tok/s, user ratings (positive + negative).
 
-## (improvement) Chat input box and default chat area width for user messages should be narrower and centered.
+## (improvement) Run input box and default conversation-view width for user inputs should be narrower and centered.
 Priority: normal
-As a user I want the chat and message area to be centered in my view so that my eyes do not have to scan left and right too much, reducing eye fatigue. 
+As a user I want the input and message area in the chained-run conversation view to be centered in my view so that my eyes do not have to scan left and right too much, reducing eye fatigue.
 
-Multiple model responses are allowed to take the full width of the chat area container, since it is easier to compare responses side by side.
+Multiple model responses are allowed to take the full width of the run view container, since it is easier to compare responses side by side.
 
 ![Sceenshot](./.testing_images/centered_chat.png)
 
-## (usability) Agent-driven experiment workflow is not yet reviewable in the frontend
+## (usability) Agent-driven eval/run workflow is not yet reviewable in the frontend
 Priority: high
-Problem: The requirements describe agents/scripts driving statistically meaningful batches while domain experts review and annotate results in the same product. The backend experiment API exists, but the frontend only supports chat review annotations. Batch experiment results and experiment annotations are not exposed in the UI, so a human reviewer must inspect API/raw files instead of staying in the browser.
+Problem: The requirements describe agents/scripts driving statistically meaningful batches while domain experts review and annotate results in the same product. The current backend experiment API is a legacy pre-redesign implementation path; the target architecture should expose agent-driven work as runs and optional eval plans. Batch eval results, chained runs, and annotations are not exposed in the UI, so a human reviewer must inspect API/raw files instead of staying in the browser.
 
 Related gaps:
-- Experiment runs are synchronous and opaque: no progress stream, cancel, retry, resume, or per-case status.
-- Experiment execution launches all test-case/model pairs concurrently, which makes rate limits and cost control hard for agent-driven runs.
-- REST chat completion cannot request multiple completions or pass response-index context, even though the WebSocket path can.
-- Multi-turn response selection is turn-level rather than per-model, so different models cannot cleanly continue from different selected completion variants.
+- Legacy experiment runs are synchronous and opaque: no progress stream, cancel, retry, resume, or per-case status.
+- Legacy experiment execution launches all test-case/model pairs concurrently, which makes rate limits and cost control hard for agent-driven runs.
+- REST run execution cannot request multiple completions or pass response-index context, even though the WebSocket path can.
+- Multi-turn response selection is turn-level rather than per-model/config slot, so different models cannot cleanly continue from different selected completion variants.
 
 ## (usability) Configuration preflight is too shallow for automated runs
 Priority: high
