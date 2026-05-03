@@ -17,10 +17,11 @@ principles:
   - No migration from chatrooms or legacy experiments is required.
   - Keep JSON and JSONL local-first storage unless a strong reason emerges.
 current_status:
-  summary: "Phase 1 storage substrate is implemented additively; legacy app behavior is intentionally still present."
+  summary: "Phase 2 additive task/config-set REST routes are implemented; legacy app behavior is intentionally still present."
   completed:
     - phase_1_storage_substrate
-  next_recommended_slice: phase_2_routes_tasks_config_sets
+    - phase_2_routes_tasks_config_sets
+  next_recommended_slice: phase_3_routes_runs_chains_annotations
 manual_smoke_tests:
   - id: manual_storage_smoke_2026_05_03
     status: passed
@@ -30,10 +31,20 @@ manual_smoke_tests:
       provider_secret_leaked: false
       run_outputs_read_back: true
       run_chain_edge_mapping_read_back: true
+  - id: manual_phase_2_api_smoke_2026_05_03
+    status: passed
+    summary: "Created provider, config set, slot, task, and froze config version twice through FastAPI TestClient."
+    observed:
+      task_default_config_set_linked: true
+      config_set_slot_order_updated: true
+      config_version_reused_by_hash: true
+      provider_secret_leaked: false
 automated_tests:
   passing:
     - command: "uv run --extra dev pytest tests\\test_storage.py"
       result: "12 passed"
+    - command: "uv run --extra dev pytest tests\\test_run_native_routes.py tests\\test_storage.py"
+      result: "18 passed"
   known_legacy_failures:
     - test: "tests/test_chat.py::test_export_import_roundtrip"
       reason: "Test expects GET export, current route implements POST export."
@@ -71,7 +82,7 @@ phases:
 
   - id: phase_2_routes_tasks_config_sets
     title: "Additive REST routes for tasks and config sets"
-    status: pending
+    status: completed
     depends_on:
       - phase_1_storage_substrate
     objective: "Expose task and config-set CRUD plus slot CRUD and config-version listing/freezing over public API contracts."

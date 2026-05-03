@@ -23,6 +23,8 @@ from tukey.server.routes import models as models_routes
 from tukey.server.routes import search as search_routes
 from tukey.server.routes import experiments as experiment_routes
 from tukey.server.routes import mcp as mcp_routes
+from tukey.server.routes import tasks as task_routes
+from tukey.server.routes import config_sets as config_set_routes
 from tukey.server import websocket as ws_routes
 from tukey.mcp.manager import McpManager
 
@@ -43,6 +45,8 @@ def _init_routes(
     search_routes.init(storage)
     experiment_routes.init(storage, config)
     mcp_routes.init(config, mcp_manager)
+    task_routes.init(storage)
+    config_set_routes.init(storage, config)
     ws_routes.init(storage, config, mcp_manager)
 
 
@@ -87,6 +91,8 @@ def create_app(data_dir: str | None = None) -> FastAPI:
     app.include_router(search_routes.router)
     app.include_router(experiment_routes.router)
     app.include_router(mcp_routes.router)
+    app.include_router(task_routes.router)
+    app.include_router(config_set_routes.router)
     app.include_router(ws_routes.router)
 
     @app.on_event("shutdown")
