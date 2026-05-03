@@ -202,9 +202,65 @@ async def test_native_image_generation_posts_prompt_json(monkeypatch):
     assert captured["url"] == "https://api.example/v1/images/generations"
     assert captured["json"]["prompt"] == "paint a lighthouse"
     assert captured["json"]["quality"] == "low"
-    assert captured["json"]["response_format"] == "b64_json"
+    assert "response_format" not in captured["json"]
     assert captured["headers"]["Content-Type"] == "application/json"
     assert response.images[0].data == b"generated"
+
+
+@pytest.mark.asyncio
+async def test_native_dalle_image_generation_requests_b64_json(monkeypatch):
+    raw = base64.b64encode(b"generated").decode("ascii")
+    captured = {}
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, url, **kwargs):
+            captured["json"] = kwargs.get("json")
+            return httpx.Response(
+                200,
+                json={"data": [{"b64_json": raw}]},
+                request=httpx.Request("POST", url),
+            )
+
+    monkeypatch.setattr("tukey.providers.openai_provider.httpx.AsyncClient", lambda: FakeClient())
+    provider = OpenAICompatibleProvider(api_key="sk-test", base_url="https://api.example/v1")
+
+    response = await provider.generate_image([
+        {"role": "user", "content": [{"type": "text", "text": "paint a lighthouse"}]},
+    ], "dall-e-3")
+
+    assert captured["json"]["response_format"] == "b64_json"
+    assert response.images[0].data == b"generated"
+
+
+@pytest.mark.asyncio
+async def test_native_image_generation_error_includes_provider_body(monkeypatch):
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, url, **kwargs):
+            return httpx.Response(
+                400,
+                json={"error": {"message": "Unsupported parameter: response_format"}},
+                request=httpx.Request("POST", url),
+            )
+
+    monkeypatch.setattr("tukey.providers.openai_provider.httpx.AsyncClient", lambda: FakeClient())
+    provider = OpenAICompatibleProvider(api_key="sk-test", base_url="https://api.example/v1")
+
+    with pytest.raises(RuntimeError, match="Unsupported parameter"):
+        await provider.generate_image([
+            {"role": "user", "content": [{"type": "text", "text": "paint a lighthouse"}]},
+        ], "gpt-image-1")
 
 
 @pytest.mark.asyncio

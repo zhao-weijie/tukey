@@ -57,6 +57,21 @@ class OpenAICompatibleProvider:
             return model.split("/", 1)[1]
         return model
 
+    @staticmethod
+    def _uses_legacy_image_response_format(model: str) -> bool:
+        """DALL-E image endpoints need response_format for base64; GPT Image does not."""
+        return model.startswith("dall-e-")
+
+    @staticmethod
+    def _raise_for_status(resp: httpx.Response) -> None:
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            detail = resp.text.strip()
+            if detail:
+                raise RuntimeError(f"API {resp.status_code}: {detail[:1000]}") from exc
+            raise
+
     def _build_payload(self, model: str, messages: list[dict], **extra: Any) -> dict:
         payload: dict[str, Any] = {"model": self._normalize_model(model), "messages": messages}
         for key in ("temperature", "max_tokens", "top_p", "stop",
@@ -85,7 +100,7 @@ class OpenAICompatibleProvider:
                 headers=self._headers(),
                 timeout=300.0,
             )
-            resp.raise_for_status()
+            self._raise_for_status(resp)
             data = resp.json()
 
         duration_ms = (time.perf_counter() - start) * 1000
@@ -147,7 +162,7 @@ class OpenAICompatibleProvider:
                 headers=self._headers(),
                 timeout=300.0,
             )
-            resp.raise_for_status()
+            self._raise_for_status(resp)
             data = resp.json()
             duration_ms = (time.perf_counter() - start) * 1000
             return await self._openrouter_image_response(data, model, duration_ms, client)
@@ -160,8 +175,9 @@ class OpenAICompatibleProvider:
                 "native image_generation does not support image inputs; use image_edit or OpenRouter multimodal image generation"
             )
         extra_params = kwargs.get("extra_params") if isinstance(kwargs.get("extra_params"), dict) else {}
+        normalized_model = self._normalize_model(model)
         payload: dict[str, Any] = {
-            "model": self._normalize_model(model),
+            "model": normalized_model,
             "prompt": self._messages_to_prompt(messages),
         }
         for key in (
@@ -175,7 +191,8 @@ class OpenAICompatibleProvider:
         ):
             if extra_params.get(key) is not None:
                 payload[key] = extra_params[key]
-        payload.setdefault("response_format", "b64_json")
+        if self._uses_legacy_image_response_format(normalized_model):
+            payload.setdefault("response_format", "b64_json")
 
         start = time.perf_counter()
         async with httpx.AsyncClient() as client:
@@ -185,7 +202,7 @@ class OpenAICompatibleProvider:
                 headers=self._headers(),
                 timeout=300.0,
             )
-            resp.raise_for_status()
+            self._raise_for_status(resp)
             data = resp.json()
             duration_ms = (time.perf_counter() - start) * 1000
             return await self._native_image_response(
@@ -212,7 +229,8 @@ class OpenAICompatibleProvider:
         for key in ("size", "quality", "output_format", "background", "user"):
             if extra_params.get(key) is not None:
                 data[key] = extra_params[key]
-        data.setdefault("response_format", "b64_json")
+        if self._uses_legacy_image_response_format(data["model"]):
+            data.setdefault("response_format", "b64_json")
 
         files = []
         for index, image in enumerate(image_inputs):
@@ -228,7 +246,7 @@ class OpenAICompatibleProvider:
                 headers=self._auth_headers(),
                 timeout=300.0,
             )
-            resp.raise_for_status()
+            self._raise_for_status(resp)
             raw = resp.json()
             duration_ms = (time.perf_counter() - start) * 1000
             return await self._native_image_response(
@@ -385,7 +403,7 @@ class OpenAICompatibleProvider:
         if not url.startswith("https://"):
             raise ValueError("Image URL must be a base64 data URL or HTTPS URL")
         resp = await client.get(url, timeout=60.0)
-        resp.raise_for_status()
+        cls._raise_for_status(resp)
         mime_type = resp.headers.get("content-type", "").split(";", 1)[0].strip().lower()
         if not mime_type.startswith("image/"):
             raise ValueError(f"Hosted image URL returned non-image content type: {mime_type or 'unknown'}")
