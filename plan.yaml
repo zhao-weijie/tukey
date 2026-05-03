@@ -17,13 +17,13 @@ principles:
   - No migration from chatrooms or legacy experiments is required.
   - Keep JSON and JSONL local-first storage unless a strong reason emerges.
 current_status:
-  summary: "Phase 4 multimodal-ready RunEngine and explicit run execution route are implemented; legacy app behavior is intentionally still present."
+  summary: "Phase 4 multimodal-ready RunEngine is complete; Phase 5 adapter direction is rejected in favor of a clean-cut run-native interactive UI refactor."
   completed:
     - phase_1_storage_substrate
     - phase_2_routes_tasks_config_sets
     - phase_3_routes_runs_chains_annotations
     - phase_4_multimodal_ready_run_engine
-  next_recommended_slice: phase_5_interactive_adapter
+  next_recommended_slice: phase_5_clean_cut_run_native_interactive_ui
 manual_smoke_tests:
   - id: manual_storage_smoke_2026_05_03
     status: passed
@@ -250,10 +250,12 @@ phases:
 
   - id: phase_5_interactive_adapter
     title: "Adapt one interactive fan-out path to canonical runs"
-    status: pending
+    status: superseded
     depends_on:
       - phase_4_multimodal_ready_run_engine
     objective: "Keep legacy UI stable while making interactive send create Run and RunOutput records as canonical targets."
+    superseded_by: phase_5_clean_cut_run_native_interactive_ui
+    note: "Superseded by clean-cut run-native interactive refactor; no dual-write adapter."
     files:
       modify:
         - tukey/chat/room.py
@@ -269,11 +271,52 @@ phases:
       - "Keep legacy ChatMessage response for frontend compatibility during transition."
       - "Record linkage from legacy turn_id to run_id in metadata if needed."
 
+  - id: phase_5_clean_cut_run_native_interactive_ui
+    title: "Clean-cut run-native interactive UI"
+    status: pending
+    depends_on:
+      - phase_4_multimodal_ready_run_engine
+    objective: "Replace active chatroom/chat execution with task, config-set, run-chain, run, input, output, annotation, search, and export records."
+    decisions:
+      legacy_data_policy: "Hide legacy chatrooms from the main UI; leave existing legacy files untouched; do not migrate."
+      ui_model: "Use Tasks + Run Chains as active product concepts."
+      compatibility: "Active annotations, search, and export are run-native only."
+      legacy_routes: "Old /api/chat/* and /ws/chat/* may remain temporarily but are not used by the main UI."
+      adapter_policy: "No dual-write interactive adapter."
+    files:
+      likely_backend:
+        - tukey/server/routes/run_chains.py
+        - tukey/server/routes/runs.py
+        - tukey/server/websocket.py
+        - tukey/server/routes/config.py
+        - tukey/server/routes/search.py
+        - tukey/server/routes/annotations.py
+      likely_frontend:
+        - ui/src/lib/api.ts
+        - ui/src/lib/wsManager.ts
+        - ui/src/stores/tukeyStore.ts
+        - ui/src/components/Sidebar.tsx
+        - ui/src/components/RunChainView.tsx
+        - ui/src/components/ResponseCard.tsx
+    behavior:
+      - "New sends create Run records and persist RunInput/RunOutput as the only active execution data."
+      - "Run chains provide the chat-like exploratory UX with explicit lineage."
+      - "Config sets and frozen config versions replace chatroom model snapshots."
+      - "The main UI does not list or create legacy chatrooms/chats."
+      - "Quick setup creates provider, config set, task, and first run chain instead of chatroom/chat."
+      - "Annotations target run outputs, not legacy chat messages."
+      - "Search and export operate over run-native records for the active product surface."
+    verification_planned:
+      - "Backend focused run-native tests."
+      - "cd ui && npm run build"
+      - "uv run tukey"
+      - "Manual browser smoke at http://localhost:8000"
+
   - id: phase_6_run_chain_continuation
     title: "Run-chain continuation mapping"
     status: pending
     depends_on:
-      - phase_5_interactive_adapter
+      - phase_5_clean_cut_run_native_interactive_ui
     objective: "Use selected prior outputs per slot/config version as explicit follow-up context."
     files:
       modify:
@@ -351,12 +394,14 @@ phases:
 
   - id: phase_10_frontend_replacement
     title: "Replace chatroom UI with task/config-set/run-chain views"
-    status: pending
+    status: superseded
     depends_on:
       - phase_2_routes_tasks_config_sets
       - phase_4_multimodal_ready_run_engine
       - phase_6_run_chain_continuation
     objective: "Move frontend state and primary UI from chatrooms/messages to tasks, config sets, runs, outputs, and run chains."
+    superseded_by: phase_5_clean_cut_run_native_interactive_ui
+    note: "Folded into the clean-cut Phase 5 refactor so the product does not ship a dual-write adapter first."
     files:
       modify:
         - ui/src/lib/api.ts
@@ -381,6 +426,17 @@ phases:
       - "cd ui && npm run build"
       - "uv run tukey"
       - "Manual browser smoke at http://localhost:8000"
+
+locked_decisions:
+  - id: legacy_data_policy
+    decision: "Hide legacy chatrooms from the main UI and do not migrate existing legacy chat files."
+    locked_at: "2026-05-03"
+  - id: ui_model_clean_cut
+    decision: "Use Tasks + Run Chains as the active UI model."
+    locked_at: "2026-05-03"
+  - id: compatibility_clean_cut
+    decision: "Active annotations, search, and export are run-native only; legacy routes may remain temporarily but are not active UI dependencies."
+    locked_at: "2026-05-03"
 
 open_questions:
   - id: route_naming_freeze
