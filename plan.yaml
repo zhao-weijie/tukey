@@ -17,13 +17,14 @@ principles:
   - No migration from chatrooms or legacy experiments is required.
   - Keep JSON and JSONL local-first storage unless a strong reason emerges.
 current_status:
-  summary: "Phase 4 multimodal-ready RunEngine is complete; Phase 5 adapter direction is rejected in favor of a clean-cut run-native interactive UI refactor."
+  summary: "Phase 5 clean-cut run-native interactive UI is implemented with REST execution, run-chain detail/export/search helpers, and run-native quick setup."
   completed:
     - phase_1_storage_substrate
     - phase_2_routes_tasks_config_sets
     - phase_3_routes_runs_chains_annotations
     - phase_4_multimodal_ready_run_engine
-  next_recommended_slice: phase_5_clean_cut_run_native_interactive_ui
+    - phase_5_clean_cut_run_native_interactive_ui
+  next_recommended_slice: phase_6_run_chain_continuation
 manual_smoke_tests:
   - id: manual_storage_smoke_2026_05_03
     status: passed
@@ -80,6 +81,12 @@ manual_smoke_tests:
         - input_recorded
         - output_completed
         - run_completed
+  - id: manual_phase_5_server_health_2026_05_03
+    status: passed
+    summary: "Started Tukey with uv run tukey, checked /api/health at localhost:8000, and stopped the server."
+    observed:
+      data_dir: "C:\\Users\\zhaow\\.tukey"
+      health_status: "ok"
 automated_tests:
   passing:
     - command: "uv run --extra dev pytest tests\\test_storage.py"
@@ -90,6 +97,10 @@ automated_tests:
       result: "24 passed"
     - command: "uv run --extra dev pytest tests\\test_run_engine.py tests\\test_run_native_routes.py tests\\test_storage.py"
       result: "30 passed"
+    - command: "uv run --extra dev pytest tests\\test_run_native_routes.py tests\\test_storage.py tests\\test_run_engine.py"
+      result: "34 passed"
+    - command: "cd ui && npm run build"
+      result: "passed with Vite chunk-size warning"
   known_legacy_failures:
     - test: "tests/test_chat.py::test_export_import_roundtrip"
       reason: "Test expects GET export, current route implements POST export."
@@ -273,7 +284,7 @@ phases:
 
   - id: phase_5_clean_cut_run_native_interactive_ui
     title: "Clean-cut run-native interactive UI"
-    status: pending
+    status: completed
     depends_on:
       - phase_4_multimodal_ready_run_engine
     objective: "Replace active chatroom/chat execution with task, config-set, run-chain, run, input, output, annotation, search, and export records."
@@ -306,11 +317,23 @@ phases:
       - "Quick setup creates provider, config set, task, and first run chain instead of chatroom/chat."
       - "Annotations target run outputs, not legacy chat messages."
       - "Search and export operate over run-native records for the active product surface."
+    delivered:
+      - "Active UI now loads tasks, config sets, run chains, runs, outputs, annotations, providers, and MCP servers through a run-native Zustand store."
+      - "Main sidebar lists tasks and run chains, not legacy chatrooms."
+      - "Run-chain view sends prompts by creating queued runs and executing them through POST /api/runs/{run_id}/execute."
+      - "Config-set editor edits ConfigSlot records and leaves frozen ConfigVersion records intact."
+      - "Quick setup creates provider, config set, slots, task, and first run chain."
+      - "Run-chain detail/export helper routes aggregate chain render/export data."
+      - "Search indexes run-native tasks, chains, run inputs, outputs, and annotation comments."
     verification_planned:
       - "Backend focused run-native tests."
       - "cd ui && npm run build"
       - "uv run tukey"
       - "Manual browser smoke at http://localhost:8000"
+    verification_completed:
+      - "uv run --extra dev pytest tests\\test_run_native_routes.py tests\\test_storage.py tests\\test_run_engine.py"
+      - "cd ui && npm run build"
+      - "uv run tukey health smoke against http://localhost:8000/api/health"
 
   - id: phase_6_run_chain_continuation
     title: "Run-chain continuation mapping"

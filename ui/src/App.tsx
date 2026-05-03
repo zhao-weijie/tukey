@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Sidebar } from "@/components/Sidebar";
-import { ChatRoom } from "@/components/ChatRoom";
+import { RunChainView } from "@/components/RunChainView";
 import { WelcomeSetup } from "@/components/WelcomeSetup";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useChatStore } from "@/stores/chatStore";
+import { useTukeyStore } from "@/stores/tukeyStore";
 import { apiClient } from "@/lib/api";
 
 export default function App() {
@@ -11,34 +11,31 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [showWelcome, setShowWelcome] = useState(false);
   const [providerDialogOpen, setProviderDialogOpen] = useState(false);
-  const { setProviders, setChatrooms, setActiveChatroom, setChats, setActiveChat } = useChatStore();
   const [demoPrompt, setDemoPrompt] = useState<string | null>(null);
+  const { loadWorkspace, setActiveChainId, loadChainDetail, setProviders } = useTukeyStore();
 
-  // Check if this is a first-run (no providers configured)
   useEffect(() => {
     apiClient.listProviders()
-      .then((p) => {
-        setProviders(p);
-        setShowWelcome(p.length === 0);
-        setLoading(false);
+      .then(async (providers) => {
+        setProviders(providers);
+        setShowWelcome(providers.length === 0);
+        if (providers.length > 0) {
+          await loadWorkspace();
+        }
       })
-      .catch(() => setLoading(false));
-  }, [setProviders]);
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [loadWorkspace, setProviders]);
 
   const handleSetupComplete = async (result: {
-    chatroomId: string;
-    chatId: string;
+    chainId: string;
     providers: any[];
     demoPrompt: string;
   }) => {
     setProviders(result.providers);
-    // Refresh chatrooms and navigate to the new one
-    const chatrooms = await apiClient.listChatrooms();
-    setChatrooms(chatrooms);
-    setActiveChatroom(result.chatroomId);
-    const chats = await apiClient.listChats(result.chatroomId);
-    setChats(chats);
-    setActiveChat(result.chatId);
+    await loadWorkspace();
+    setActiveChainId(result.chainId);
+    await loadChainDetail(result.chainId);
     setDemoPrompt(result.demoPrompt);
     setShowWelcome(false);
   };
@@ -51,7 +48,7 @@ export default function App() {
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background text-foreground">
-        <div className="h-6 w-6 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-foreground/20 border-t-foreground" />
       </div>
     );
   }
@@ -68,7 +65,7 @@ export default function App() {
         {showWelcome ? (
           <WelcomeSetup onComplete={handleSetupComplete} onSkip={handleSkipToProviders} />
         ) : (
-          <ChatRoom demoPrompt={demoPrompt} onDemoPromptUsed={() => setDemoPrompt(null)} />
+          <RunChainView demoPrompt={demoPrompt} onDemoPromptUsed={() => setDemoPrompt(null)} />
         )}
       </div>
     </TooltipProvider>

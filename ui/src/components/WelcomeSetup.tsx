@@ -18,8 +18,7 @@ const DEMO_PROMPT =
 
 interface Props {
   onComplete: (result: {
-    chatroomId: string;
-    chatId: string;
+    chainId: string;
     providers: any[];
     demoPrompt: string;
   }) => void;
@@ -49,8 +48,7 @@ export function WelcomeSetup({ onComplete, onSkip }: Props) {
       });
       const providers = await apiClient.listProviders();
       onComplete({
-        chatroomId: result.chatroom.id,
-        chatId: result.chat.id,
+        chainId: result.chain.id,
         providers,
         demoPrompt: DEMO_PROMPT,
       });
@@ -65,7 +63,7 @@ export function WelcomeSetup({ onComplete, onSkip }: Props) {
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="text-lg font-medium">Setting up your workspace...</div>
-          <div className="text-sm text-muted-foreground">Creating provider, chatroom, and models</div>
+          <div className="text-sm text-muted-foreground">Creating provider, config set, task, and run chain</div>
           <div className="flex justify-center">
             <div className="h-6 w-6 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin" />
           </div>
@@ -144,7 +142,7 @@ export function WelcomeSetup({ onComplete, onSkip }: Props) {
             </div>
 
             <Button onClick={handleOpenRouterSetup} disabled={!apiKey.trim()} className="w-full">
-              Connect & Start Comparing
+              Connect and Start Comparing
             </Button>
           </div>
         </div>

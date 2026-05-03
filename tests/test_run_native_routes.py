@@ -405,3 +405,66 @@ def test_annotations_and_artifacts_target_run_outputs(client):
     r = client.get(f"/api/runs/{run['id']}/artifacts")
     assert r.status_code == 200
     assert [a["id"] for a in r.json()] == [artifact["id"]]
+
+
+def test_run_native_quick_setup_creates_task_config_set_and_chain(client):
+    r = client.post("/api/config/quick-setup", json={
+        "api_key": "sk-quick",
+        "provider": "openai",
+        "base_url": "https://example.test/v1",
+        "display_name": "Quick Provider",
+        "chatroom_name": "Quick Comparison",
+        "models": [{"model_id": "openai/test-model", "display_name": "Test Model"}],
+    })
+    assert r.status_code == 201
+    data = r.json()
+    assert data["provider"]["api_key"] == "sk-quick"
+    assert data["config_set"]["name"] == "Quick Comparison"
+    assert data["slots"][0]["provider_id"] == data["provider"]["id"]
+    assert data["task"]["default_config_set_id"] == data["config_set"]["id"]
+    assert data["chain"]["default_config_set_id"] == data["config_set"]["id"]
+
+    versions = client.get(f"/api/config-sets/{data['config_set']['id']}/versions").json()
+    assert versions == []
+
+
+def test_run_chain_detail_export_and_search_are_run_native(client):
+    config_set, slot, version, run = _create_run(client, status="complete")
+    input_record = client.post(f"/api/runs/{run['id']}/inputs", json={
+        "content": [{"type": "text", "text": "find the best haiku"}],
+    }).json()
+    output = client.post(f"/api/runs/{run['id']}/outputs", json={
+        "config_version_id": version["id"],
+        "slot_id": slot["id"],
+        "provider_model_id": slot["provider_model_id"],
+        "status": "complete",
+        "text": "frog pond benchmark",
+    }).json()
+    annotation = client.post("/api/annotations", json={
+        "target": {"type": "output", "run_id": run["id"], "output_id": output["id"]},
+        "rating": "positive",
+        "comment": "memorable imagery",
+    }).json()
+    chain = client.post("/api/run-chains", json={
+        "name": "Poetry Chain",
+        "root_run_id": run["id"],
+        "default_config_set_id": config_set["id"],
+    }).json()
+    client.patch(f"/api/runs/{run['id']}", json={"status": "complete"})
+
+    detail = client.get(f"/api/run-chains/{chain['id']}/detail").json()
+    assert detail["chain"]["id"] == chain["id"]
+    assert detail["runs"][0]["id"] == run["id"]
+    assert detail["inputs"][run["id"]][0]["id"] == input_record["id"]
+    assert detail["outputs"][run["id"]][0]["id"] == output["id"]
+    assert detail["annotations"][run["id"]][0]["id"] == annotation["id"]
+    assert detail["config_versions"][config_set["id"]][0]["id"] == version["id"]
+
+    exported = client.post(f"/api/run-chains/{chain['id']}/export").json()
+    assert exported["kind"] == "tukey.run_chain_export"
+    assert exported["chain"]["id"] == chain["id"]
+
+    results = client.get("/api/search?q=frog").json()["results"]
+    assert any(result["type"] == "run_output" and result["run_id"] == run["id"] for result in results)
+    results = client.get("/api/search?q=memorable").json()["results"]
+    assert any(result["type"] == "annotation" and result["annotation_id"] == annotation["id"] for result in results)

@@ -2,28 +2,34 @@
 
 from __future__ import annotations
 
-import uuid
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from tukey.config import ConfigManager
+from tukey.core import contracts
+from tukey.storage import Storage
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
-# Will be set by app factory
 _config: ConfigManager | None = None
+_storage: Storage | None = None
 
 
-def init(config: ConfigManager) -> None:
-    global _config
+def init(config: ConfigManager, storage: Storage | None = None) -> None:
+    global _config, _storage
     _config = config
+    if storage is not None:
+        _storage = storage
 
 
 def _cm() -> ConfigManager:
     assert _config is not None
     return _config
+
+
+def _s() -> Storage:
+    assert _storage is not None
+    return _storage
 
 
 class ProviderCreate(BaseModel):
@@ -118,17 +124,17 @@ class QuickSetupRequest(BaseModel):
     display_name: str | None = None
     models: list[dict] = []
     chatroom_name: str = "My First Comparison"
+    task_name: str | None = None
+    config_set_name: str | None = None
+    chain_name: str | None = None
 
 
 @router.post("/quick-setup", status_code=201)
 def quick_setup(body: QuickSetupRequest):
-    """One-call onboarding: create provider + chatroom with models."""
-    from tukey.chat.room import ChatRoom
-    from tukey.storage import Storage
-
+    """One-call onboarding: create provider, config set, task, and chain."""
     cm = _cm()
+    storage = _s()
 
-    # 1. Create provider
     provider = cm.add_provider(
         provider=body.provider,
         api_key=body.api_key,
@@ -137,16 +143,15 @@ def quick_setup(body: QuickSetupRequest):
     )
     provider_id = provider["id"]
 
-    # 2. Create chatroom with models attached to this provider
-    # Import storage from the app's init — we need it for ChatRoom
-    # Access via the chat route's storage (shared instance)
-    from tukey.server.routes import chat as chat_routes
-    storage, _ = chat_routes._get_deps()
+    config_set = contracts.make_config_set({
+        "name": body.config_set_name or body.chatroom_name,
+        "description": "Created by quick setup",
+        "tags": ["quickstart"],
+    })
+    storage.write_config_set_meta(config_set["id"], config_set)
 
-    models = []
-    for m in body.models:
-        models.append({
-            "id": str(uuid.uuid4()),
+    slots = [
+        contracts.make_config_slot(config_set["id"], {
             "provider_id": provider_id,
             "model_id": m.get("model_id", ""),
             "display_name": m.get("display_name", m.get("model_id", "")),
@@ -155,17 +160,40 @@ def quick_setup(body: QuickSetupRequest):
             "max_tokens": m.get("max_tokens"),
             "top_p": m.get("top_p"),
             "extra_params": m.get("extra_params", {}),
+            "task_type": m.get("task_type", "chat_completion"),
+            "modality": m.get("modality", "text"),
         })
+        for m in body.models
+    ]
+    storage.write_config_slots(config_set["id"], slots)
+    config_set["slot_order"] = [slot["id"] for slot in slots]
+    config_set["updated_at"] = contracts.utc_now()
+    storage.write_config_set_meta(config_set["id"], config_set)
 
-    room = ChatRoom(storage, cm)
-    chatroom = room.create(name=body.chatroom_name, models=models)
+    task = contracts.make_task({
+        "name": body.task_name or body.chatroom_name,
+        "description": "Quick-start comparison task",
+        "tags": ["quickstart"],
+        "default_config_set_id": config_set["id"],
+    })
+    storage.write_task_meta(task["id"], task)
 
-    # 3. Create a first chat in the chatroom
-    room_with_id = ChatRoom(storage, cm, chatroom["id"])
-    chat = room_with_id.create_chat(name="Chat 1")
+    chain = contracts.make_run_chain({
+        "name": body.chain_name or body.chatroom_name,
+        "default_config_set_id": config_set["id"],
+    })
+    storage.write_run_chain_meta(chain["id"], chain)
+    storage.write_run_chain_view_state(chain["id"], {
+        "chain_id": chain["id"],
+        "selected_outputs": {},
+        "pinned_output_ids": [],
+        "collapsed_run_ids": [],
+    })
 
     return {
         "provider": provider,
-        "chatroom": chatroom,
-        "chat": chat,
+        "config_set": config_set,
+        "slots": slots,
+        "task": task,
+        "chain": chain,
     }

@@ -86,7 +86,7 @@ export function DataDirDialog({ open, onOpenChange, currentDir, onSwitch }: Data
             </div>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            Switching will load chatrooms and providers from the new directory. Active chats will be disconnected.
+            Switching will load tasks, config sets, run chains, and providers from the new directory.
           </p>
           {error && (
             <p className="text-[11px] text-destructive">{error}</p>

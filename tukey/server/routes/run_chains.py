@@ -80,6 +80,76 @@ def _validate_edge_outputs(storage: Storage, parent_run_id: str, mapping: dict) 
         raise HTTPException(422, f"Mapped outputs not found on parent run: {missing}")
 
 
+def _chain_run_ids(storage: Storage, chain_id: str, chain: dict) -> list[str]:
+    ids: list[str] = []
+    if chain.get("root_run_id"):
+        ids.append(chain["root_run_id"])
+    for run_id in storage.list_run_records():
+        run = storage.read_run_record_meta(run_id)
+        if run and run.get("chain_id") == chain_id and run_id not in ids:
+            ids.append(run_id)
+    for edge in storage.read_run_edges(chain_id):
+        for key in ("parent_run_id", "child_run_id"):
+            run_id = edge.get(key)
+            if run_id and run_id not in ids:
+                ids.append(run_id)
+    return ids
+
+
+def _collect_chain_detail(storage: Storage, chain_id: str) -> dict:
+    chain = _require_chain(storage, chain_id)
+    run_ids = _chain_run_ids(storage, chain_id, chain)
+    runs = []
+    inputs: dict[str, list[dict]] = {}
+    outputs: dict[str, list[dict]] = {}
+    events: dict[str, list[dict]] = {}
+    annotations: dict[str, list[dict]] = {}
+    artifacts: dict[str, list[dict]] = {}
+    config_set_ids: set[str] = set()
+
+    for run_id in run_ids:
+        run = storage.read_run_record_meta(run_id)
+        if not run:
+            continue
+        runs.append(run)
+        if run.get("config_set_id"):
+            config_set_ids.add(run["config_set_id"])
+        inputs[run_id] = storage.read_run_inputs(run_id)
+        outputs[run_id] = storage.read_run_outputs(run_id)
+        events[run_id] = storage.read_run_events(run_id)
+        annotations[run_id] = storage.read_run_annotations(run_id)
+        artifacts[run_id] = storage.read_artifact_meta(run_id)
+
+    if chain.get("default_config_set_id"):
+        config_set_ids.add(chain["default_config_set_id"])
+
+    config_sets = []
+    config_slots: dict[str, list[dict]] = {}
+    config_versions: dict[str, list[dict]] = {}
+    for config_set_id in sorted(config_set_ids):
+        config_set = storage.read_config_set_meta(config_set_id)
+        if not config_set:
+            continue
+        config_sets.append(config_set)
+        config_slots[config_set_id] = storage.read_config_slots(config_set_id)
+        config_versions[config_set_id] = storage.read_config_versions(config_set_id)
+
+    return {
+        "chain": chain,
+        "edges": storage.read_run_edges(chain_id),
+        "view_state": storage.read_run_chain_view_state(chain_id),
+        "runs": runs,
+        "inputs": inputs,
+        "outputs": outputs,
+        "events": events,
+        "annotations": annotations,
+        "artifacts": artifacts,
+        "config_sets": config_sets,
+        "config_slots": config_slots,
+        "config_versions": config_versions,
+    }
+
+
 @router.get("")
 def list_run_chains():
     storage = _s()
@@ -111,6 +181,22 @@ def create_run_chain(body: RunChainCreate):
 @router.get("/{chain_id}")
 def get_run_chain(chain_id: str):
     return _require_chain(_s(), chain_id)
+
+
+@router.get("/{chain_id}/detail")
+def get_run_chain_detail(chain_id: str):
+    return _collect_chain_detail(_s(), chain_id)
+
+
+@router.post("/{chain_id}/export")
+def export_run_chain(chain_id: str):
+    detail = _collect_chain_detail(_s(), chain_id)
+    return {
+        "schema_version": 1,
+        "kind": "tukey.run_chain_export",
+        "exported_at": contracts.utc_now(),
+        **detail,
+    }
 
 
 @router.patch("/{chain_id}")

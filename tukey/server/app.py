@@ -45,7 +45,7 @@ def _init_routes(
     storage: Storage, config: ConfigManager, mcp_manager: McpManager
 ) -> None:
     """Wire up all route modules with the given storage/config instances."""
-    config_routes.init(config)
+    config_routes.init(config, storage)
     chat_routes.init(storage, config)
     models_routes.init(config)
     search_routes.init(storage)
