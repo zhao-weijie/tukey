@@ -125,6 +125,8 @@ As a user, I want follow-up runs to use whichever prior response variant I selec
 ### US1.5 Search
 As a user, I want to search across config sets, runs, run chains, prompts, responses, and annotations so I can find prior evaluation work without scrolling.
 
+Search results for run-native records must be navigable in the chain context where the match appears. Run-chain membership is multi-valued: direct `run.chain_id`, `run_chain.root_run_id`, and run-chain edge parent/child references all count as membership evidence. If a run, input, output, or annotation appears in multiple visible non-archived chains, search should show one result per chain context and clearly identify the chain name. There is no hidden primary-chain precedence. Runs with no visible chain context may be omitted from the chain-oriented search UI until Tukey has a standalone run view.
+
 ### US2.1 Independent configuration
 As a user, I want to configure each slot in a config set independently (system prompt, temperature, provider routing, tools, response format, etc.) so I can compare how the same prompt performs under different settings, or tune each model to its strengths.
 

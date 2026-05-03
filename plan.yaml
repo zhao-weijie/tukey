@@ -317,6 +317,9 @@ phases:
       - "Quick setup creates provider, config set, task, and first run chain instead of chatroom/chat."
       - "Annotations target run outputs, not legacy chat messages."
       - "Search and export operate over run-native records for the active product surface."
+      - "Run-chain search navigation treats chain membership as multi-valued: direct run.chain_id, chain.root_run_id, and run-chain edges all create navigable chain contexts."
+      - "When a run/input/output/annotation belongs to multiple visible non-archived chains, search returns one result per chain context with chain_id and chain_name; no hidden primary-chain precedence is applied."
+      - "Runs with no visible non-archived chain membership are omitted from the chain-oriented search UI until a standalone run view exists."
     delivered:
       - "Active UI now loads tasks, config sets, run chains, runs, outputs, annotations, providers, and MCP servers through a run-native Zustand store."
       - "Main sidebar lists tasks and run chains, not legacy chatrooms."
@@ -459,6 +462,9 @@ locked_decisions:
     locked_at: "2026-05-03"
   - id: compatibility_clean_cut
     decision: "Active annotations, search, and export are run-native only; legacy routes may remain temporarily but are not active UI dependencies."
+    locked_at: "2026-05-03"
+  - id: run_chain_search_navigation_contexts
+    decision: "Search treats run-chain membership as multi-valued and returns one navigable result per visible chain context for run/input/output/annotation matches; direct run.chain_id, root_run_id, and edge membership are all membership evidence with no precedence."
     locked_at: "2026-05-03"
 
 open_questions:

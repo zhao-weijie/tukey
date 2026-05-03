@@ -44,6 +44,21 @@ Looking at the server console revealed this error
 )
 libc++abi: terminating due to uncaught exception of type NSException
 ```
+
+## (bug) WR-001 Search results can be non-navigable for valid run-chain members
+Severity: Major
+
+Problem: run-chain detail/export includes members from `root_run_id`, direct `run.chain_id`, and run-chain edges, but search currently derives result `chain_id` only from `run.chain_id`. Runs created first and later attached as a chain root or edge can appear in chain detail/export while their run/input/output/annotation search results have no `chain_id`. The current SearchDialog closes after selection even when it cannot load a chain, so those results are effectively dead clicks.
+
+Decision: treat run-chain membership as multi-valued for search navigation. Direct `run.chain_id`, `run_chain.root_run_id`, and edge parent/child references are all membership evidence with no hidden primary-chain precedence. For each run/input/output/annotation match, return one result per visible non-archived chain context with `chain_id` and `chain_name`. If no visible chain context exists, omit the match from the chain-oriented search UI until a standalone run view exists.
+
+Implementation notes:
+- Build or share a helper that derives run-to-chain contexts using the same membership semantics as run-chain detail/export.
+- Avoid silently picking the first matching chain when a run belongs to multiple chains.
+- Cache chain metadata while building search results so repeated matches do not repeatedly read the same chain files.
+- Update the search UI to make duplicate matches under different chain names understandable.
+- Add regression coverage for root-only membership, edge-only membership, multiple-chain membership, archived-chain exclusion, and no-chain omission.
+
 ## (redesign) Replace chatrooms and experiments with tasks, config sets, runs, and chained runs
 Priority: high
 
