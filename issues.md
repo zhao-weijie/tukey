@@ -2,6 +2,8 @@
 
 This ranking is against `2026-05-03_goals.md`, not against general product quality. Some lower-ranked issues are real bugs or polish gaps, but they are not necessarily critical path for the May 3 goals.
 
+Parallelization note: the two P0 items below are intended to be tackled independently. Keep the Codex live-eval path text-only and agent/discovery-focused. Keep the multimodal path focused on browser image input/output UX. Coordinate only before changing shared run, output, content-block, or artifact API schemas.
+
 ### P0 critical path: Codex-driven live evaluation path is not productized
 Related goals:
 - Must have: "Codex (the agent) - driven evaluation case that can complete in <3 minutes live."
@@ -20,6 +22,11 @@ Existing issues:
 
 Recommended next slice: create a small blessed workflow that selects or creates a config set, runs 2-4 prompts, reports outputs/metadata, and leaves reviewable run-chain records in the UI. Package its instructions in a Codex skill or plugin.
 
+Parallel boundary:
+- Owns: text-only agent workflow, Codex-discoverable instructions/skill/plugin, small run-native API happy path, reviewable run-chain records.
+- Avoids: image upload, artifact rendering, image-edit UI, multimodal executor behavior.
+- Shared contract: use existing `/api/runs` and `/api/runs/{run_id}/execute`; do not change run/output schemas without coordinating with the multimodal workstream.
+
 ### P0 critical path: multimodal is backend-ready but not frontend-reviewable
 Related goal:
 - Must have: "Add multimodal completions e.g. image editing and generation."
@@ -32,6 +39,11 @@ Existing issue:
 - `(feature) Add multimodal completions for image generation and editing`
 
 Recommended next slice: add image output rendering via `/api/artifacts/{artifact_id}/content`, then add minimal image input attachment for `image_edit`. A basic gallery/review surface is more important than advanced annotation in the first pass.
+
+Parallel boundary:
+- Owns: image artifact rendering, minimal image input attachment for `image_edit`, browser usability for `image_generation` and `image_edit`.
+- Avoids: Codex skill/plugin work, text-only agent eval scripts, eval-plan/synthesis/scheduled-monitoring work.
+- Shared contract: preserve existing run/output/content-block/artifact API shapes unless a concrete UI blocker requires a coordinated schema change.
 
 ### P1 important: chained-run UI exists but not DAG/progressive-disclosure management
 Related goals:

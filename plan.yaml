@@ -25,7 +25,71 @@ current_status:
     - phase_4_multimodal_ready_run_engine
     - phase_5_clean_cut_run_native_interactive_ui
     - phase_9_multimodal_artifacts
-  next_recommended_slice: phase_6_run_chain_continuation
+  next_recommended_slice: p0_parallel_codex_eval_and_multimodal_frontend
+parallel_workstreams:
+  - id: p0_codex_live_eval_path
+    title: "Codex-driven live evaluation path"
+    priority: P0
+    status: ready
+    goal_refs:
+      - "Codex-driven evaluation case that can complete in <3 minutes live."
+      - "Skill or plugin that enables Codex agent to discover Tukey and use its features easily."
+    scope:
+      - "Keep the first happy path text-only."
+      - "Create or document a blessed agent workflow that selects or creates a config set, executes a small run set through public run-native APIs, and summarizes outputs/metadata."
+      - "Package workflow knowledge where Codex can discover it, such as a Tukey skill/plugin or repo-local agent guide."
+      - "Leave reviewable run-chain records in the UI."
+    avoid:
+      - "Do not change image upload, image rendering, or artifact review UI."
+      - "Do not alter multimodal provider/executor behavior unless a shared API bug blocks the text-only workflow."
+      - "Do not introduce a second execution path; use /api/runs and /api/runs/{run_id}/execute."
+    likely_files:
+      - README.md
+      - AGENTS.md
+      - CLAUDE.md
+      - skills or plugin files if added
+      - tukey/server/routes/runs.py only if a small public-contract gap blocks the workflow
+      - tests for any new agent-facing workflow helpers
+    shared_contracts:
+      - "/api/tasks"
+      - "/api/config-sets"
+      - "/api/runs"
+      - "/api/runs/{run_id}/execute"
+      - "/api/run-chains"
+
+  - id: p0_multimodal_frontend_review
+    title: "Multimodal frontend review path"
+    priority: P0
+    status: ready
+    goal_refs:
+      - "Add multimodal completions e.g. image editing and generation."
+    scope:
+      - "Render image artifact outputs in the run-output review UI using /api/artifacts/{artifact_id}/content."
+      - "Add minimal image input/attachment support for image_edit runs."
+      - "Make image_generation and image_edit usable from the existing config-set/run-chain UI."
+      - "Keep backend executor contracts unchanged unless browser UX reveals a concrete contract bug."
+    avoid:
+      - "Do not work on Codex skill/plugin docs or text-only live-eval automation."
+      - "Do not redesign eval plans, synthesis, or scheduled model monitoring."
+      - "Do not casually change shared run/output/artifact API shapes."
+    likely_files:
+      - ui/src/components/RunChainView.tsx
+      - ui/src/components/RunOutputCard.tsx
+      - ui/src/stores/tukeyStore.ts
+      - ui/src/lib/api.ts
+      - tukey/server/routes/artifacts.py only if content serving needs a small fix
+      - tests for artifact/image UI or API behavior where practical
+    shared_contracts:
+      - "/api/runs"
+      - "/api/runs/{run_id}/execute"
+      - "/api/runs/{run_id}/artifacts"
+      - "/api/artifacts/{artifact_id}/content"
+coordination_rules:
+  - "The two P0 workstreams may run simultaneously."
+  - "Treat the run-native API shape as the shared boundary; coordinate before changing request/response schemas for runs, outputs, content blocks, or artifacts."
+  - "The Codex live-eval workstream should remain text-only until the multimodal frontend path lands."
+  - "The multimodal frontend workstream should not depend on Codex skill/plugin work."
+  - "Both workstreams should leave legacy chatroom and experiment routes untouched except for compatibility fixes."
 manual_smoke_tests:
   - id: manual_storage_smoke_2026_05_03
     status: passed
