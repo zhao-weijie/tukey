@@ -1,0 +1,330 @@
+schema_version: 1
+project: tukey-run-native-redesign
+updated_at: "2026-05-03"
+source_docs:
+  - AGENTS.md
+  - requirements.md
+  - issues.md
+  - data_structure_contracts.md
+principles:
+  - Runs are the only execution primitive.
+  - Chatrooms are retired as product/data primitives.
+  - Experiments are retired as execution/data primitives.
+  - Eval plans are optional orchestration over runs, not an execution engine.
+  - Tasks and use cases are user-facing organization.
+  - Run chains provide chat-like exploratory UX with explicit lineage.
+  - Agents, cron jobs, and UI use the same public contracts.
+  - No migration from chatrooms or legacy experiments is required.
+  - Keep JSON and JSONL local-first storage unless a strong reason emerges.
+current_status:
+  summary: "Phase 1 storage substrate is implemented additively; legacy app behavior is intentionally still present."
+  completed:
+    - phase_1_storage_substrate
+  next_recommended_slice: phase_2_routes_tasks_config_sets
+manual_smoke_tests:
+  - id: manual_storage_smoke_2026_05_03
+    status: passed
+    summary: "Created temp config set, froze config version twice, wrote run output and run-chain edge, read back invariants."
+    observed:
+      config_version_reused_by_hash: true
+      provider_secret_leaked: false
+      run_outputs_read_back: true
+      run_chain_edge_mapping_read_back: true
+automated_tests:
+  passing:
+    - command: "uv run --extra dev pytest tests\\test_storage.py"
+      result: "12 passed"
+  known_legacy_failures:
+    - test: "tests/test_chat.py::test_export_import_roundtrip"
+      reason: "Test expects GET export, current route implements POST export."
+    - test: "tests/test_config.py::test_load_empty"
+      reason: "Test expects only providers; current ConfigManager.load also defaults mcp_servers."
+phases:
+  - id: phase_1_storage_substrate
+    title: "Run-native data contracts and storage helpers"
+    status: completed
+    objective: "Add future data types and storage helpers without wiring UI or changing legacy execution behavior."
+    files:
+      changed:
+        - tukey/core/__init__.py
+        - tukey/core/contracts.py
+        - tukey/storage/store.py
+        - tests/test_storage.py
+      future_touch:
+        - tukey/storage/__init__.py
+    delivered:
+      - "Contract helper factories for Task, ConfigSet, ConfigSlot, ConfigVersion, Run, RunInput, RunOutput, RunChain, RunEdge, Annotation, Artifact, EvalPlan, and Schedule."
+      - "Secret-stripped provider and MCP snapshots."
+      - "Stable config slot content hash."
+      - "Storage helpers for future layout: tasks, config_sets, eval_plans, schedules, runs, run_chains."
+      - "Config-version freeze/reuse by content hash."
+      - "Tests for config version reuse, no secret leakage, retry output append behavior, and run-chain lineage."
+    invariants:
+      - "Config versions are append-only through versions.jsonl."
+      - "A matching content hash returns an existing config version instead of duplicating."
+      - "Provider snapshots never include api_key."
+      - "MCP snapshots never include env."
+      - "Retries and additional completions append RunOutput records."
+      - "RunEdge.mapping preserves per-slot or per-config-version lineage."
+    verification:
+      - "uv run --extra dev pytest tests\\test_storage.py"
+
+  - id: phase_2_routes_tasks_config_sets
+    title: "Additive REST routes for tasks and config sets"
+    status: pending
+    depends_on:
+      - phase_1_storage_substrate
+    objective: "Expose task and config-set CRUD plus slot CRUD and config-version listing/freezing over public API contracts."
+    files:
+      create:
+        - tukey/server/routes/tasks.py
+        - tukey/server/routes/config_sets.py
+        - tests/test_run_native_routes.py
+      modify:
+        - tukey/server/app.py
+    endpoints:
+      - "GET /api/tasks"
+      - "POST /api/tasks"
+      - "GET /api/tasks/{task_id}"
+      - "PATCH /api/tasks/{task_id}"
+      - "DELETE /api/tasks/{task_id}"
+      - "GET /api/config-sets"
+      - "POST /api/config-sets"
+      - "GET /api/config-sets/{config_set_id}"
+      - "PATCH /api/config-sets/{config_set_id}"
+      - "DELETE /api/config-sets/{config_set_id}"
+      - "GET /api/config-sets/{config_set_id}/slots"
+      - "POST /api/config-sets/{config_set_id}/slots"
+      - "PATCH /api/config-sets/{config_set_id}/slots/{slot_id}"
+      - "DELETE /api/config-sets/{config_set_id}/slots/{slot_id}"
+      - "GET /api/config-sets/{config_set_id}/versions"
+      - "POST /api/config-sets/{config_set_id}/versions:freeze"
+    tests:
+      - "Task create/list/get/patch/archive or delete."
+      - "Config set create/list/get/patch/archive or delete."
+      - "Slot create/update/disable preserves slot_order."
+      - "Freeze strips provider secrets and reuses content hash."
+      - "404/422 behavior for missing task/config set/provider/slot."
+    verification:
+      - "uv run --extra dev pytest tests\\test_run_native_routes.py tests\\test_storage.py"
+
+  - id: phase_3_routes_runs_chains_annotations
+    title: "Additive REST routes for runs, run chains, annotations, artifacts, eval plans, and schedules"
+    status: pending
+    depends_on:
+      - phase_2_routes_tasks_config_sets
+    objective: "Expose the rest of the run-native storage surface before adding model execution."
+    files:
+      create:
+        - tukey/server/routes/runs.py
+        - tukey/server/routes/run_chains.py
+        - tukey/server/routes/eval_plans.py
+        - tukey/server/routes/schedules.py
+        - tukey/server/routes/annotations.py
+        - tukey/server/routes/artifacts.py
+      modify:
+        - tukey/server/app.py
+    endpoints:
+      - "POST /api/runs"
+      - "GET /api/runs"
+      - "GET /api/runs/{run_id}"
+      - "GET /api/runs/{run_id}/inputs"
+      - "GET /api/runs/{run_id}/outputs"
+      - "GET /api/runs/{run_id}/events"
+      - "GET /api/run-chains"
+      - "POST /api/run-chains"
+      - "GET /api/run-chains/{chain_id}"
+      - "PATCH /api/run-chains/{chain_id}"
+      - "GET /api/run-chains/{chain_id}/edges"
+      - "PUT /api/run-chains/{chain_id}/view-state"
+      - "GET /api/eval-plans"
+      - "POST /api/eval-plans"
+      - "GET /api/schedules"
+      - "POST /api/schedules"
+      - "GET /api/annotations"
+      - "POST /api/annotations"
+      - "GET /api/runs/{run_id}/artifacts"
+    tests:
+      - "Run CRUD stores inputs, outputs, events, and annotations under runs/{run_id}."
+      - "Run-chain edge creation requires existing parent/child run IDs."
+      - "View-state PUT replaces only view_state.json."
+      - "Eval plans and schedules create metadata only, no execution path."
+      - "Artifact metadata references local run artifact path."
+
+  - id: phase_4_text_run_engine
+    title: "Text-only RunEngine"
+    status: pending
+    depends_on:
+      - phase_2_routes_tasks_config_sets
+      - phase_3_routes_runs_chains_annotations
+    objective: "Execute text inputs against frozen config versions and persist RunInput, RunOutput, and events."
+    files:
+      create:
+        - tukey/run/__init__.py
+        - tukey/run/engine.py
+        - tests/test_run_engine.py
+      modify:
+        - tukey/server/routes/runs.py
+    behavior:
+      - "POST /api/runs can create queued records without execution."
+      - "POST /api/runs/{run_id}/execute or POST /api/runs with execute=true starts text execution."
+      - "Freeze active config slots before execution."
+      - "One RunOutput per config_version_id per response_index."
+      - "Provider failures become failed RunOutput records."
+      - "Events append lifecycle records for run_started, input_recorded, output_completed, output_failed, run_completed, run_failed."
+    tests:
+      - "Mock provider success writes complete outputs and usage."
+      - "Mock provider failure writes failed output without failing entire storage write."
+      - "n completions append response_index 0..n-1."
+      - "Retry appends new outputs rather than replacing existing outputs."
+
+  - id: phase_5_interactive_adapter
+    title: "Adapt one interactive fan-out path to canonical runs"
+    status: pending
+    depends_on:
+      - phase_4_text_run_engine
+    objective: "Keep legacy UI stable while making interactive send create Run and RunOutput records as canonical targets."
+    files:
+      modify:
+        - tukey/chat/room.py
+        - tukey/server/websocket.py
+        - tukey/server/routes/chat.py
+      tests:
+        - tests/test_chat.py
+        - tests/test_run_engine.py
+    behavior:
+      - "On send, create a Run with kind=interactive."
+      - "Write RunInput for user content."
+      - "Write RunOutput for every streamed or REST response."
+      - "Keep legacy ChatMessage response for frontend compatibility during transition."
+      - "Record linkage from legacy turn_id to run_id in metadata if needed."
+
+  - id: phase_6_run_chain_continuation
+    title: "Run-chain continuation mapping"
+    status: pending
+    depends_on:
+      - phase_5_interactive_adapter
+    objective: "Use selected prior outputs per slot/config version as explicit follow-up context."
+    files:
+      modify:
+        - tukey/run/engine.py
+        - tukey/server/websocket.py
+        - tukey/server/routes/run_chains.py
+      tests:
+        - tests/test_run_chain_continuation.py
+    behavior:
+      - "Client can pass parent_mapping when starting a chain run."
+      - "RunEdge.mapping records selected output_id and response_index per slot/config version."
+      - "Different slots can continue from different prior response variants."
+      - "No shared vague conversation history is required."
+
+  - id: phase_7_eval_plans_and_agent_workflow
+    title: "Eval plans and agent-ready workflow over runs"
+    status: pending
+    depends_on:
+      - phase_4_text_run_engine
+      - phase_6_run_chain_continuation
+    objective: "Port formal eval and agent-driven workflows onto runs without a second execution engine."
+    files:
+      modify:
+        - tukey/server/routes/eval_plans.py
+        - tukey/server/routes/runs.py
+        - tukey/experiment/engine.py
+        - tukey/server/routes/experiments.py
+      create:
+        - tests/test_eval_plans_run_native.py
+    behavior:
+      - "Eval plans create/group Run records."
+      - "Legacy experiment routes may become adapters or remain only for temporary compatibility."
+      - "Agent workflow uses public REST routes only."
+      - "No direct storage writes by agents."
+
+  - id: phase_8_synthesis_run_bundle
+    title: "Run-native synthesis bundle"
+    status: pending
+    depends_on:
+      - phase_4_text_run_engine
+    objective: "Replace ExperimentBundle source contract with RunBundle built from runs, outputs, annotations, config versions, tasks, and optional eval plans."
+    files:
+      modify:
+        - tukey/synthesis/bundle.py
+        - tukey/synthesis/tool.py
+        - tukey/synthesis/cli.py
+        - tukey/synthesis/tools/basic_stats.py
+        - tukey/synthesis/tools/tfidf.py
+      create:
+        - tests/test_synthesis_run_bundle.py
+    behavior:
+      - "Tools receive a run-native bundle and never read Storage directly."
+      - "Interactive runs, run chains, eval plans, and scheduled runs share the same synthesis path."
+
+  - id: phase_9_multimodal_artifacts
+    title: "Multimodal artifact storage and contracts"
+    status: pending
+    depends_on:
+      - phase_4_text_run_engine
+      - phase_3_routes_runs_chains_annotations
+    objective: "Support image/file content blocks and local artifact metadata in run inputs and outputs."
+    files:
+      modify:
+        - tukey/core/contracts.py
+        - tukey/storage/store.py
+        - tukey/run/engine.py
+        - tukey/server/routes/artifacts.py
+      create:
+        - tests/test_artifacts.py
+    behavior:
+      - "Raw artifacts live under runs/{run_id}/artifacts."
+      - "RunInput and RunOutput content blocks reference artifact_id."
+      - "Artifacts include sha256, size, mime_type, modality, and local path."
+
+  - id: phase_10_frontend_replacement
+    title: "Replace chatroom UI with task/config-set/run-chain views"
+    status: pending
+    depends_on:
+      - phase_2_routes_tasks_config_sets
+      - phase_4_text_run_engine
+      - phase_6_run_chain_continuation
+    objective: "Move frontend state and primary UI from chatrooms/messages to tasks, config sets, runs, outputs, and run chains."
+    files:
+      modify:
+        - ui/src/lib/api.ts
+        - ui/src/lib/wsManager.ts
+        - ui/src/stores/chatStore.ts
+        - ui/src/components/ChatRoom.tsx
+        - ui/src/components/ModelConfig.tsx
+        - ui/src/components/Sidebar.tsx
+        - ui/src/components/ResponseCard.tsx
+        - ui/src/components/ResponseCarousel.tsx
+      create:
+        - ui/src/stores/tukeyStore.ts
+        - ui/src/components/TaskSidebar.tsx
+        - ui/src/components/ConfigSetEditor.tsx
+        - ui/src/components/RunChainView.tsx
+    design_constraints:
+      - "Use shadcn components from ui/src/components/ui."
+      - "Do not build a visible graph editor initially."
+      - "Use progressive disclosure for lineage and branch details."
+      - "Preserve min-w-0 and overflow-hidden flex constraints."
+    verification:
+      - "cd ui && npm run build"
+      - "uv run tukey"
+      - "Manual browser smoke at http://localhost:8000"
+
+open_questions:
+  - id: route_naming_freeze
+    question: "Should config-version freezing be POST /api/config-sets/{id}/versions:freeze or POST /api/config-sets/{id}/versions/freeze?"
+    default_decision: "Use /versions:freeze for explicit action semantics unless local route style prefers path segments."
+  - id: legacy_routes_removal_timing
+    question: "When should legacy chat and experiment routes be hidden or removed after frontend replacement?"
+    default_decision: "Keep until run-chain UI and run engine are manually verified, then remove without migration."
+  - id: execution_start_shape
+    question: "Should run execution be POST /api/runs with execute=true or POST /api/runs/{run_id}/execute?"
+    default_decision: "Prefer POST /api/runs for create-only and POST /api/runs/{run_id}/execute for explicit execution."
+agent_update_protocol:
+  - "Update current_status.next_recommended_slice when handing off."
+  - "Move phase.status through pending, in_progress, blocked, completed."
+  - "Append manual_smoke_tests entries after nontrivial manual verification."
+  - "Append automated_tests.passing entries only for commands actually run."
+  - "Record known failures with test name and reason instead of deleting them."
+  - "Keep file scopes concrete and update them when implementation changes."
