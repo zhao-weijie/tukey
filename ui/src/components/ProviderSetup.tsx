@@ -78,6 +78,8 @@ export function ProviderSetup({ providers, onUpdate, externalOpen, onExternalOpe
     onUpdate(providers.filter((p) => p.id !== id));
   };
 
+  const providerKeyLabel = (provider: Provider) => provider.api_key || (provider.api_key_present ? "key configured" : "no key");
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button size="sm" variant="outline" className="w-full h-7 text-xs gap-1.5" />}>
@@ -96,7 +98,7 @@ export function ProviderSetup({ providers, onUpdate, externalOpen, onExternalOpe
                 <div>
                   <div className="font-medium">{p.display_name || p.provider}</div>
                   <div className="text-xs text-muted-foreground">
-                    {p.base_url || "default"} &middot; {p.api_key.slice(0, 8)}...
+                    {p.base_url || "default"} &middot; {providerKeyLabel(p)}
                     {p.strip_model_prefix && <span className="ml-1 text-amber-500">&middot; strip prefix</span>}
                   </div>
                 </div>

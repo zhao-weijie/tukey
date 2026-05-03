@@ -113,6 +113,39 @@ def test_task_crud_and_soft_delete(client):
     assert r.json()["archived"] is True
 
 
+def test_provider_routes_redact_api_keys(client):
+    r = client.post("/api/config/providers", json={
+        "provider": "openrouter",
+        "api_key": "sk-or-v1-1234567890abcdef",
+        "base_url": "https://openrouter.ai/api/v1",
+        "display_name": "OpenRouter",
+    })
+    assert r.status_code == 201
+    provider = r.json()
+    assert provider["api_key"] == "sk-or-...cdef"
+    assert provider["api_key_present"] is True
+
+    r = client.get("/api/config/providers")
+    assert r.status_code == 200
+    listed = r.json()
+    assert listed[0]["id"] == provider["id"]
+    assert listed[0]["api_key"] == "sk-or-...cdef"
+    assert listed[0]["api_key_present"] is True
+
+    r = client.get(f"/api/config/providers/{provider['id']}")
+    assert r.status_code == 200
+    assert r.json()["api_key"] == "sk-or-...cdef"
+
+    r = client.patch(f"/api/config/providers/{provider['id']}", json={
+        "api_key": "sk-or-v1-abcdef1234567890",
+    })
+    assert r.status_code == 200
+    assert r.json()["api_key"] == "sk-or-...7890"
+
+    stored = client.app.state.tukey.config.get_provider(provider["id"])
+    assert stored["api_key"] == "sk-or-v1-abcdef1234567890"
+
+
 def test_task_default_config_set_validation(client):
     r = client.post("/api/tasks", json={
         "name": "Broken task",
@@ -445,7 +478,8 @@ def test_run_native_quick_setup_creates_task_config_set_and_chain(client):
     })
     assert r.status_code == 201
     data = r.json()
-    assert data["provider"]["api_key"] == "sk-quick"
+    assert data["provider"]["api_key"] == "********"
+    assert data["provider"]["api_key_present"] is True
     assert data["config_set"]["name"] == "Quick Comparison"
     assert data["slots"][0]["provider_id"] == data["provider"]["id"]
     assert data["task"]["default_config_set_id"] == data["config_set"]["id"]

@@ -3,7 +3,8 @@ import { create } from "zustand";
 export interface Provider {
   id: string;
   provider: string;
-  api_key: string;
+  api_key?: string | null;
+  api_key_present?: boolean;
   base_url?: string | null;
   display_name?: string;
   strip_model_prefix?: boolean;
