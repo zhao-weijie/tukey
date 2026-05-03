@@ -17,7 +17,7 @@ principles:
   - No migration from chatrooms or legacy experiments is required.
   - Keep JSON and JSONL local-first storage unless a strong reason emerges.
 current_status:
-  summary: "Phase 5 clean-cut run-native interactive UI is implemented. Backend multimodal run execution now preserves image/artifact inputs, supports image generation/editing task types, and persists image outputs as artifacts."
+  summary: "Phase 5 clean-cut run-native interactive UI is implemented. Backend multimodal run execution now preserves image/artifact inputs, supports image generation/editing task types, persists image outputs as artifacts, and a repo-local Codex live-eval workflow is available for text-only agent-driven runs."
   completed:
     - phase_1_storage_substrate
     - phase_2_routes_tasks_config_sets
@@ -25,12 +25,12 @@ current_status:
     - phase_4_multimodal_ready_run_engine
     - phase_5_clean_cut_run_native_interactive_ui
     - phase_9_multimodal_artifacts
-  next_recommended_slice: p0_parallel_codex_eval_and_multimodal_frontend
+  next_recommended_slice: p0_multimodal_frontend_review
 parallel_workstreams:
   - id: p0_codex_live_eval_path
     title: "Codex-driven live evaluation path"
     priority: P0
-    status: ready
+    status: completed
     goal_refs:
       - "Codex-driven evaluation case that can complete in <3 minutes live."
       - "Skill or plugin that enables Codex agent to discover Tukey and use its features easily."
@@ -56,6 +56,10 @@ parallel_workstreams:
       - "/api/runs"
       - "/api/runs/{run_id}/execute"
       - "/api/run-chains"
+    delivered:
+      - "Added a repo-local `tukey-live-eval` Codex skill with the blessed text-only OpenRouter discovery and live-eval workflow."
+      - "Added a public-REST-only runner that creates a task, config set, three chat-completion slots, run chain, queued run, executes it, and summarizes outputs/metadata."
+      - "Added focused tests for provider guidance, exact three-model validation, and the public API record-creation/execution sequence."
 
   - id: p0_multimodal_frontend_review
     title: "Multimodal frontend review path"
@@ -168,6 +172,10 @@ automated_tests:
       result: "passed with Vite chunk-size warning"
     - command: "uv run pytest tests/test_run_engine.py tests/test_providers.py tests/test_artifacts.py tests/test_run_native_routes.py"
       result: "43 passed"
+    - command: "uv run pytest tests/test_agent_live_eval_workflow.py"
+      result: "2 passed"
+    - command: "uv run pytest tests/test_run_native_routes.py tests/test_run_engine.py"
+      result: "28 passed"
   known_legacy_failures:
     - test: "tests/test_chat.py::test_export_import_roundtrip"
       reason: "Test expects GET export, current route implements POST export."

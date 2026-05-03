@@ -68,6 +68,18 @@ Supported provider setup fields:
 
 Keys are stored locally in `~/.tukey/config.json` by default. You can switch data directories from the folder path in the sidebar.
 
+## Codex Live Eval
+
+Tukey includes a repo-local Codex skill for a short text-only live evaluation: `skills/tukey-live-eval/SKILL.md`. It guides Codex to discover configured OpenRouter models, interview you for one test case, run exactly three models through the run-native REST API, summarize outputs, and leave a run chain you can annotate in the frontend.
+
+The executable helper is:
+
+```bash
+uv run python skills/tukey-live-eval/scripts/run_live_eval.py --base-url http://localhost:8000 --provider-id <provider-id> --model <model-a> --model <model-b> --model <model-c> --task-name "Support triage" --chain-name "Support triage live eval" --prompt "Classify this support email..."
+```
+
+It never reads or writes Tukey storage directly and does not collect provider secrets. Configure OpenRouter in the UI first if no suitable provider exists.
+
 ## REST API Example
 
 The active API creates a queued run, then executes it explicitly:

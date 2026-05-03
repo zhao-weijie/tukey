@@ -5,6 +5,11 @@
 - `uv run tukey` starts the full app (backend + UI)
 - `npm run build` in `ui/` to rebuild the frontend; the backend serves the built assets
 
+## Codex Live Eval
+- Use the repo-local skill at `skills/tukey-live-eval/SKILL.md` for the blessed Codex-driven text eval workflow.
+- The bundled runner is `skills/tukey-live-eval/scripts/run_live_eval.py`; it uses only public REST APIs and creates reviewable run-chain records.
+- Keep this workflow text-only and do not handle provider secrets in chat; guide users to configure OpenRouter in the Tukey UI if needed.
+
 ## Package Management
 - Use `uv` for all Python dependency management (not pip, not poetry)
 - `uv sync` to install, `uv run pytest` to run tests, etc.
