@@ -1,6 +1,6 @@
 # Data Structure Contracts
 
-This document records Tukey's present data contracts as implemented today, then defines the future contracts for the config-set/run-chain redesign.
+This document records Tukey's data contracts as implemented today, including the run-native config-set/run-chain redesign and the artifact-backed multimodal execution path.
 
 ## Architecture Decisions
 
@@ -17,7 +17,16 @@ Exploratory comparison, formal evals, and agent-operated model monitoring share 
 
 ## Present State
 
-The current app has two partially separate domains:
+The active product surface is run-native:
+
+- Config sets and frozen config versions define model/provider/task execution settings.
+- Runs are the execution records for text and multimodal work.
+- Run chains provide the chat-like comparison view and explicit lineage.
+- Artifacts store generated or uploaded image bytes and are referenced from run inputs/outputs.
+
+Legacy chatroom and experiment code still exists for compatibility and historical tests, but it is no longer the target product contract.
+
+The legacy app had two partially separate domains:
 
 - Interactive comparison: `chatrooms -> chats -> messages/responses`.
 - Batch evaluation: `experiments -> runs -> results/annotations`.
@@ -534,6 +543,23 @@ interface LLMResponse {
   raw_response: Record<string, unknown>;
 }
 
+interface ImageResult {
+  data: Uint8Array;
+  mime_type: string;
+  revised_prompt?: string | null;
+  metadata: Record<string, unknown>;
+}
+
+interface ImageResponse {
+  images: ImageResult[];
+  content: string;
+  usage: Record<string, unknown>;
+  cost: number | null;
+  duration_ms: number;
+  model: string;
+  raw_response: Record<string, unknown>;
+}
+
 interface StreamChunk {
   delta: string;
   done: boolean;
@@ -588,7 +614,7 @@ Adapters currently build bundles from either chatrooms or experiment runs.
 - `Message[]`
 - streaming entries keyed by `${modelId}:${responseIndex}`
 
-There is no frontend store for experiments, runs, config versions, or run chains today.
+The active frontend store uses run-native tasks, config sets, run chains, runs, outputs, annotations, and artifacts. Legacy chat store contracts are retained only for legacy routes/tests.
 
 ### Present-State Contract Issues
 
@@ -599,7 +625,7 @@ There is no frontend store for experiments, runs, config versions, or run chains
 - Annotations have separate chat and experiment schemas.
 - Tool interactions are recorded for chat responses but not experiment results.
 - WebSocket events are chat-specific.
-- There is no artifact contract for images, files, or other multimodal outputs.
+- Artifact-backed image inputs and outputs are now supported by the run-native backend.
 - Provider and MCP configs are mutable; snapshots strip secrets but are not versioned as first-class records.
 - Synthesis adapts multiple legacy shapes into one bundle rather than reading a single run-native contract.
 
@@ -789,7 +815,8 @@ interface RunInput {
 
 type ContentBlock =
   | { type: "text"; text: string }
-  | { type: "image"; artifact_id: string; mime_type: string; detail?: string }
+  | { type: "image"; url: string; mime_type?: string; detail?: string }
+  | { type: "artifact"; artifact_id: string; mime_type?: string; detail?: string }
   | { type: "file"; artifact_id: string; mime_type: string; filename?: string }
   | { type: "json"; value: unknown };
 ```
@@ -798,7 +825,9 @@ Contract rules:
 
 - Text-only runs use a single `{ type: "text" }` block.
 - Multimodal runs use content blocks and artifact references.
-- Raw artifacts live under the run's `artifacts/` directory or a shared artifact store.
+- `image.url` is expected to be provider-compatible, normally a base64 data URL in v1.
+- `artifact` image blocks resolve to data URLs at provider-call time.
+- Raw artifacts live under the run's `artifacts/` directory.
 
 ### Run Output Contract
 
@@ -1010,6 +1039,13 @@ interface Artifact {
 }
 ```
 
+Artifact rules:
+
+- `Storage.write_artifact_bytes()` writes bytes under `runs/{run_id}/artifacts/`, computes `sha256`, stores size and mime type, and appends artifact metadata.
+- `Storage.read_artifact_bytes()` resolves metadata back to bytes with path-escape protection.
+- Generated and edited images are stored as `kind: "output"`, `modality: "image"` artifacts and referenced from `RunOutput.content`.
+- Input images can be represented as existing `artifact` content blocks and are converted to base64 data URLs for provider calls.
+
 ### Future REST API Surface
 
 Tasks:
@@ -1085,6 +1121,7 @@ Annotations:
 Artifacts:
 
 - `GET /api/artifacts/{artifact_id}`
+- `GET /api/artifacts/{artifact_id}/content`
 - `POST /api/artifacts`
 - `GET /api/runs/{run_id}/artifacts`
 
@@ -1182,10 +1219,11 @@ Storage:
 
 Backend execution:
 
-- Extract a multimodal-ready `RunEngine` that accepts config versions plus content-block inputs and emits run events.
+- Use a multimodal `RunEngine` that accepts config versions plus content-block inputs and emits run events.
 - `RunEngine` dispatches by `ConfigSlot.task_type` from the frozen config version, including `chat_completion`, `image_generation`, `image_edit`, and future task types.
-- The initial executor may implement only `chat_completion`, but the engine contract must normalize every input and output as `ContentBlock[]`.
+- The current executors implement `chat_completion`, `image_generation`, and `image_edit`; unsupported future task types create failed outputs.
 - Existing text-shaped provider responses are adapted into run-native execution results before persistence; provider protocols are not the engine contract.
+- Image outputs are persisted as artifacts and referenced from `RunOutput.content`.
 - Unsupported task types create failed `RunOutput` records with structured errors rather than crashing or creating a second execution path.
 - Make interactive, eval, scheduled, and agent execution all call `RunEngine`.
 - Move current chat `send_message` and legacy experiment `_execute_pair` logic behind the shared run contract.

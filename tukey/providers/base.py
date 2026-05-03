@@ -19,6 +19,25 @@ class LLMResponse:
 
 
 @dataclass
+class ImageResult:
+    data: bytes
+    mime_type: str = "image/png"
+    revised_prompt: str | None = None
+    metadata: dict = field(default_factory=dict)
+
+
+@dataclass
+class ImageResponse:
+    images: list[ImageResult] = field(default_factory=list)
+    content: str = ""
+    usage: dict = field(default_factory=dict)
+    cost: float | None = None
+    duration_ms: float = 0.0
+    model: str = ""
+    raw_response: dict = field(default_factory=dict)
+
+
+@dataclass
 class ToolCallInfo:
     id: str = ""
     name: str = ""
@@ -56,3 +75,17 @@ class LLMProvider(Protocol):
         model: str,
         **kwargs,
     ) -> AsyncIterator[StreamChunk]: ...
+
+    async def generate_image(
+        self,
+        messages: list[dict],
+        model: str,
+        **kwargs,
+    ) -> ImageResponse: ...
+
+    async def edit_image(
+        self,
+        messages: list[dict],
+        model: str,
+        **kwargs,
+    ) -> ImageResponse: ...

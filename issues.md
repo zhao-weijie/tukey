@@ -48,6 +48,8 @@ libc++abi: terminating due to uncaught exception of type NSException
 ## (bug) WR-001 Search results can be non-navigable for valid run-chain members
 Severity: Major
 
+Status: resolved in the run-native search/navigation slice.
+
 Problem: run-chain detail/export includes members from `root_run_id`, direct `run.chain_id`, and run-chain edges, but search currently derives result `chain_id` only from `run.chain_id`. Runs created first and later attached as a chain root or edge can appear in chain detail/export while their run/input/output/annotation search results have no `chain_id`. The current SearchDialog closes after selection even when it cannot load a chain, so those results are effectively dead clicks.
 
 Decision: treat run-chain membership as multi-valued for search navigation. Direct `run.chain_id`, `run_chain.root_run_id`, and edge parent/child references are all membership evidence with no hidden primary-chain precedence. For each run/input/output/annotation match, return one result per visible non-archived chain context with `chain_id` and `chain_name`. If no visible chain context exists, omit the match from the chain-oriented search UI until a standalone run view exists.
@@ -99,6 +101,22 @@ Priority: high
 Problem: Tukey currently centers text completions, but model evaluation increasingly includes image generation/editing and other multimodal outputs. Users need to compare multimodal providers/models with the same reproducibility guarantees as text runs.
 
 Desired behavior: runs can include multimodal inputs and outputs, including image generation and image editing. Outputs should be stored locally, linked from run records, and reviewable/annotatable in the UI.
+
+Status: backend implementation complete on `codex/run-multimodal-contract`.
+
+Delivered:
+- Run input content blocks preserve text plus image/artifact inputs through provider calls instead of collapsing to plain text.
+- Artifact image inputs resolve to provider-compatible data URLs at execution time.
+- `image_generation` and `image_edit` task types dispatch through the run engine.
+- OpenAI-compatible native image generation uses `/images/generations`.
+- OpenAI-compatible native image editing uses multipart `/images/edits`.
+- OpenRouter image generation/edit-compatible flows use multimodal `/chat/completions`.
+- Generated/edited image bytes are persisted as run artifacts and referenced from `RunOutput.content`.
+- Provider image parsing accepts `b64_json`, base64 `data:` URLs, and hosted HTTPS image URLs with image content-type validation.
+
+Remaining:
+- Frontend rendering/review affordances for image artifact outputs are still needed for a full product experience.
+- Run-chain DAG validation remains a separate follow-up and is not part of the multimodal backend branch.
 
 ## (feature) Codex-driven live evaluation path under 3 minutes
 Priority: high

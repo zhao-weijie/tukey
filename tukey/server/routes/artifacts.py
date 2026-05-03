@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from tukey.core import contracts
@@ -37,10 +38,9 @@ class ArtifactCreate(BaseModel):
 
 
 def _find_artifact(storage: Storage, artifact_id: str) -> dict:
-    for run_id in storage.list_run_records():
-        for artifact in storage.read_artifact_meta(run_id):
-            if artifact.get("id") == artifact_id:
-                return artifact
+    artifact = storage.find_artifact_meta(artifact_id)
+    if artifact:
+        return artifact
     raise HTTPException(404, "Artifact not found")
 
 
@@ -67,6 +67,23 @@ def create_artifact(body: ArtifactCreate):
 @router.get("/artifacts/{artifact_id}")
 def get_artifact(artifact_id: str):
     return _find_artifact(_s(), artifact_id)
+
+
+@router.get("/artifacts/{artifact_id}/content")
+def get_artifact_content(artifact_id: str):
+    storage = _s()
+    artifact = _find_artifact(storage, artifact_id)
+    try:
+        path = storage.artifact_file_path(artifact["run_id"], artifact["filename"])
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if not path.exists():
+        raise HTTPException(404, "Artifact file not found")
+    return FileResponse(
+        path,
+        media_type=artifact["mime_type"],
+        filename=artifact["filename"],
+    )
 
 
 @router.get("/runs/{run_id}/artifacts")

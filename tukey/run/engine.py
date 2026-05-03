@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 from typing import Any
 
 from tukey.config import ConfigManager
 from tukey.core import contracts
-from tukey.providers.base import LLMResponse
+from tukey.providers.base import ImageResponse, LLMResponse
 from tukey.run.executors import (
+    ImageEditExecutor,
+    ImageGenerationExecutor,
     ProviderFactory,
     TextCompletionExecutor,
     default_provider_factory,
     normalize_content_blocks,
-    text_blocks_to_text,
 )
 from tukey.storage import Storage
 
@@ -171,19 +173,34 @@ class RunEngine:
         version: dict[str, Any],
         messages: list[dict[str, Any]],
         response_index: int,
-    ) -> LLMResponse:
+    ) -> LLMResponse | ImageResponse:
         slot = version["slot_snapshot"]
         task_type = slot.get("task_type", "chat_completion")
-        if task_type != "chat_completion":
-            raise UnsupportedTaskTypeError(f"Unsupported task_type: {task_type}")
         provider_id = slot.get("provider_id")
         provider = self._provider_for_version(version, provider_id)
-        executor = TextCompletionExecutor(self.provider_factory(provider))
-        return await executor.execute(
-            messages=messages,
-            model=slot["provider_model_id"],
-            slot_snapshot=slot,
-        )
+        provider_client = self.provider_factory(provider)
+        if task_type == "chat_completion":
+            executor = TextCompletionExecutor(provider_client)
+            return await executor.execute(
+                messages=messages,
+                model=slot["provider_model_id"],
+                slot_snapshot=slot,
+            )
+        if task_type == "image_generation":
+            executor = ImageGenerationExecutor(provider_client)
+            return await executor.execute(
+                messages=messages,
+                model=slot["provider_model_id"],
+                slot_snapshot=slot,
+            )
+        if task_type == "image_edit":
+            executor = ImageEditExecutor(provider_client)
+            return await executor.execute(
+                messages=messages,
+                model=slot["provider_model_id"],
+                slot_snapshot=slot,
+            )
+        raise UnsupportedTaskTypeError(f"Unsupported task_type: {task_type}")
 
     def _provider_for_version(
         self,
@@ -205,17 +222,67 @@ class RunEngine:
         for input_record in self.storage.read_run_inputs(run_id):
             messages.append({
                 "role": input_record.get("role", "user"),
-                "content": text_blocks_to_text(input_record.get("content", [])),
+                "content": self._provider_content(input_record.get("content", [])),
             })
         return messages
+
+    def _provider_content(self, content: list[dict[str, Any]]) -> str | list[dict[str, Any]]:
+        blocks = normalize_content_blocks(content)
+        provider_blocks = []
+        for block in blocks:
+            block_type = block.get("type")
+            if block_type == "text":
+                text = str(block.get("text", ""))
+                if text:
+                    provider_blocks.append({"type": "text", "text": text})
+            elif block_type == "image":
+                url = block.get("url")
+                if not url:
+                    raise ValueError("Image input block is missing url")
+                provider_blocks.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": url,
+                        **({"detail": block["detail"]} if block.get("detail") else {}),
+                    },
+                })
+            elif block_type == "artifact":
+                provider_blocks.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": self._artifact_data_url(block),
+                        **({"detail": block["detail"]} if block.get("detail") else {}),
+                    },
+                })
+
+        text_only = [block["text"] for block in provider_blocks if block.get("type") == "text"]
+        if len(text_only) == len(provider_blocks):
+            return "\n".join(part for part in text_only if part)
+        return provider_blocks
+
+    def _artifact_data_url(self, block: dict[str, Any]) -> str:
+        artifact_id = block.get("artifact_id")
+        if not artifact_id:
+            raise ValueError("Artifact input block is missing artifact_id")
+        artifact = self.storage.find_artifact_meta(artifact_id)
+        if not artifact:
+            raise ValueError(f"Artifact not found: {artifact_id}")
+        mime_type = block.get("mime_type") or artifact.get("mime_type")
+        if not str(mime_type).startswith("image/"):
+            raise ValueError(f"Artifact is not an image: {artifact_id}")
+        data = self.storage.read_artifact_bytes(artifact)
+        encoded = base64.b64encode(data).decode("ascii")
+        return f"data:{mime_type};base64,{encoded}"
 
     def _complete_output(
         self,
         run_id: str,
         version: dict[str, Any],
         response_index: int,
-        response: LLMResponse,
+        response: LLMResponse | ImageResponse,
     ) -> dict[str, Any]:
+        if isinstance(response, ImageResponse):
+            return self._complete_image_output(run_id, version, response_index, response)
         text = response.content or ""
         return contracts.make_run_output(run_id, {
             "config_version_id": version["id"],
@@ -232,6 +299,54 @@ class RunEngine:
                 "duration_ms": response.duration_ms,
                 "tokens_per_sec": response.tokens_per_sec,
             },
+            "raw_response_ref": None,
+            "completed_at": contracts.utc_now(),
+        })
+
+    def _complete_image_output(
+        self,
+        run_id: str,
+        version: dict[str, Any],
+        response_index: int,
+        response: ImageResponse,
+    ) -> dict[str, Any]:
+        output_id = contracts.new_id()
+        blocks = []
+        for index, image in enumerate(response.images):
+            artifact = self.storage.write_artifact_bytes(
+                run_id,
+                image.data,
+                kind="output",
+                modality="image",
+                mime_type=image.mime_type,
+                output_id=output_id,
+                metadata={
+                    **image.metadata,
+                    "provider_model_id": version["slot_snapshot"]["provider_model_id"],
+                    "response_index": response_index,
+                    "image_index": index,
+                    "revised_prompt": image.revised_prompt,
+                },
+            )
+            blocks.append({
+                "type": "image",
+                "artifact_id": artifact["id"],
+                "mime_type": artifact["mime_type"],
+                "detail": "generated",
+            })
+        usage = dict(response.usage)
+        usage.setdefault("cost", response.cost)
+        usage.setdefault("duration_ms", response.duration_ms)
+        return contracts.make_run_output(run_id, {
+            "id": output_id,
+            "config_version_id": version["id"],
+            "slot_id": version["slot_id"],
+            "provider_model_id": version["slot_snapshot"]["provider_model_id"],
+            "response_index": response_index,
+            "status": "complete",
+            "content": blocks,
+            "text": response.content or None,
+            "usage": usage,
             "raw_response_ref": None,
             "completed_at": contracts.utc_now(),
         })

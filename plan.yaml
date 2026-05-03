@@ -17,13 +17,14 @@ principles:
   - No migration from chatrooms or legacy experiments is required.
   - Keep JSON and JSONL local-first storage unless a strong reason emerges.
 current_status:
-  summary: "Phase 5 clean-cut run-native interactive UI is implemented with REST execution, run-chain detail/export/search helpers, and run-native quick setup."
+  summary: "Phase 5 clean-cut run-native interactive UI is implemented. Backend multimodal run execution now preserves image/artifact inputs, supports image generation/editing task types, and persists image outputs as artifacts."
   completed:
     - phase_1_storage_substrate
     - phase_2_routes_tasks_config_sets
     - phase_3_routes_runs_chains_annotations
     - phase_4_multimodal_ready_run_engine
     - phase_5_clean_cut_run_native_interactive_ui
+    - phase_9_multimodal_artifacts
   next_recommended_slice: phase_6_run_chain_continuation
 manual_smoke_tests:
   - id: manual_storage_smoke_2026_05_03
@@ -101,11 +102,19 @@ automated_tests:
       result: "34 passed"
     - command: "cd ui && npm run build"
       result: "passed with Vite chunk-size warning"
+    - command: "uv run pytest tests/test_run_engine.py tests/test_providers.py tests/test_artifacts.py tests/test_run_native_routes.py"
+      result: "43 passed"
   known_legacy_failures:
     - test: "tests/test_chat.py::test_export_import_roundtrip"
       reason: "Test expects GET export, current route implements POST export."
     - test: "tests/test_config.py::test_load_empty"
       reason: "Test expects only providers; current ConfigManager.load also defaults mcp_servers."
+    - test: "tests/test_chat.py::test_search_chatroom_name"
+      reason: "Legacy chatroom search expectations are superseded by run-native search."
+    - test: "tests/test_chat.py::test_search_message_content"
+      reason: "Legacy chat message search expectations are superseded by run-native search."
+    - test: "tests/test_chat.py::test_search_response_content"
+      reason: "Legacy chat response search expectations are superseded by run-native search."
 phases:
   - id: phase_1_storage_substrate
     title: "Run-native data contracts and storage helpers"
@@ -219,12 +228,12 @@ phases:
       - "Artifact metadata references local run artifact path."
 
   - id: phase_4_multimodal_ready_run_engine
-    title: "Multimodal-ready RunEngine with initial text executor"
+    title: "Multimodal RunEngine with text and image executors"
     status: completed
     depends_on:
       - phase_2_routes_tasks_config_sets
       - phase_3_routes_runs_chains_annotations
-    objective: "Create a task-type-dispatched RunEngine that initially implements chat/text completions while preserving multimodal content-block and artifact contracts."
+    objective: "Create a task-type-dispatched RunEngine that implements chat/text completions plus artifact-backed image generation/editing while preserving multimodal content-block contracts."
     files:
       create:
         - tukey/run/__init__.py
@@ -240,8 +249,9 @@ phases:
       - "POST /api/runs/{run_id}/execute starts execution; POST /api/runs remains create-only unless this is explicitly revised."
       - "Freeze active config slots before execution."
       - "Dispatch execution by slot_snapshot.task_type from each frozen config version."
-      - "Implement chat_completion first through a text provider adapter."
-      - "Stub unsupported image_generation, image_edit, embedding, and future task types as failed RunOutput records."
+      - "Implement chat_completion through a text provider adapter."
+      - "Implement image_generation and image_edit through artifact-backed image executors."
+      - "Stub unsupported embedding and future task types as failed RunOutput records."
       - "Normalize all RunInput and RunOutput payloads as ContentBlock[] before persistence."
       - "Persist content: ContentBlock[] for every output."
       - "Populate text only as a convenience projection for text-like outputs."
@@ -255,7 +265,9 @@ phases:
       - "n completions append response_index 0..n-1."
       - "Retry appends new outputs rather than replacing existing outputs."
       - "Text executor persists content blocks and text projection."
-      - "Unsupported image_generation or image_edit slot creates failed RunOutput with structured error."
+      - "image_generation writes image artifacts and output image blocks."
+      - "image_edit validates text and image inputs, resolves artifact inputs, and records image outputs."
+      - "Unsupported future task type creates failed RunOutput with structured error."
     verification:
       - "uv run --extra dev pytest tests\\test_run_engine.py tests\\test_run_native_routes.py tests\\test_storage.py"
 
@@ -399,7 +411,7 @@ phases:
 
   - id: phase_9_multimodal_artifacts
     title: "Artifact-backed multimodal executors"
-    status: pending
+    status: completed
     depends_on:
       - phase_4_multimodal_ready_run_engine
       - phase_3_routes_runs_chains_annotations
@@ -407,16 +419,27 @@ phases:
     files:
       modify:
         - tukey/core/contracts.py
+        - tukey/providers/base.py
+        - tukey/providers/openai_provider.py
         - tukey/storage/store.py
         - tukey/run/engine.py
+        - tukey/run/executors.py
         - tukey/server/routes/artifacts.py
+        - tests/test_providers.py
       create:
         - tests/test_artifacts.py
     behavior:
       - "Raw artifacts live under runs/{run_id}/artifacts."
-      - "RunInput and RunOutput content blocks reference artifact_id."
+      - "RunInput content blocks preserve text, image data URLs, and artifact references."
+      - "RunOutput content blocks reference generated artifact_id values."
       - "Artifacts include sha256, size, mime_type, modality, and local path."
       - "Image executors plug into the Phase 4 task_type dispatch instead of retrofitting a separate engine."
+      - "OpenAI-compatible native image generation uses /images/generations."
+      - "OpenAI-compatible native image editing uses multipart /images/edits."
+      - "OpenRouter image generation/edit-compatible flows use multimodal /chat/completions."
+      - "Provider response parsing accepts b64_json, base64 data URLs, and hosted HTTPS image URLs with image content-type validation."
+    verification:
+      - "uv run pytest tests/test_run_engine.py tests/test_providers.py tests/test_artifacts.py tests/test_run_native_routes.py"
 
   - id: phase_10_frontend_replacement
     title: "Replace chatroom UI with task/config-set/run-chain views"
@@ -466,14 +489,14 @@ locked_decisions:
   - id: run_chain_search_navigation_contexts
     decision: "Search treats run-chain membership as multi-valued and returns one navigable result per visible chain context for run/input/output/annotation matches; direct run.chain_id, root_run_id, and edge membership are all membership evidence with no precedence."
     locked_at: "2026-05-03"
+  - id: legacy_routes_removal_timing
+    decision: "Legacy chat and experiment routes are no longer active product contracts. Keep them registered only as temporary compatibility surfaces until run-native export/import, eval-plan execution, and synthesis replacements are available. Do not add new features to legacy routes. Remove without migration once those replacement paths are verified."
+    locked_at: "2026-05-03"
 
 open_questions:
   - id: route_naming_freeze
     question: "Should config-version freezing be POST /api/config-sets/{id}/versions:freeze or POST /api/config-sets/{id}/versions/freeze?"
     default_decision: "Use /versions:freeze for explicit action semantics unless local route style prefers path segments."
-  - id: legacy_routes_removal_timing
-    question: "When should legacy chat and experiment routes be hidden or removed after frontend replacement?"
-    default_decision: "Keep until run-chain UI and run engine are manually verified, then remove without migration."
   - id: execution_start_shape
     question: "Should run execution be POST /api/runs with execute=true or POST /api/runs/{run_id}/execute?"
     default_decision: "Prefer POST /api/runs for create-only and POST /api/runs/{run_id}/execute for explicit execution."

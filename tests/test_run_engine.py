@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from tukey.core import contracts
-from tukey.providers.base import LLMResponse
+from tukey.providers.base import ImageResponse, ImageResult, LLMResponse
 from tukey.run import RunEngine
 
 
@@ -30,6 +30,42 @@ class MockTextProvider:
         )
 
 
+class MockImageProvider(MockTextProvider):
+    def __init__(self, image_responses=None, responses=None, error: Exception | None = None):
+        super().__init__(responses=responses, error=error)
+        self.image_responses = image_responses or []
+        self.image_calls = []
+        self.edit_calls = []
+
+    async def generate_image(self, messages, model, **kwargs):
+        self.image_calls.append({"messages": messages, "model": model, "kwargs": kwargs})
+        if self.error:
+            raise self.error
+        index = len(self.image_calls) - 1
+        if index < len(self.image_responses):
+            return self.image_responses[index]
+        return ImageResponse(
+            images=[ImageResult(data=f"generated {index}".encode(), mime_type="image/png")],
+            content=f"generated text {index}",
+            usage={"image_count": 1},
+            duration_ms=20.0,
+            model=model,
+        )
+
+    async def edit_image(self, messages, model, **kwargs):
+        self.edit_calls.append({"messages": messages, "model": model, "kwargs": kwargs})
+        if self.error:
+            raise self.error
+        index = len(self.edit_calls) - 1
+        return ImageResponse(
+            images=[ImageResult(data=f"edited {index}".encode(), mime_type="image/png")],
+            content=f"edited text {index}",
+            usage={"image_count": 1},
+            duration_ms=30.0,
+            model=model,
+        )
+
+
 def _setup_config_set(storage, config, *, task_type="chat_completion"):
     provider = config.add_provider(
         "openai",
@@ -46,6 +82,30 @@ def _setup_config_set(storage, config, *, task_type="chat_completion"):
         "system_prompt": "Be brief.",
         "temperature": 0.3,
         "task_type": task_type,
+    })
+    storage.write_config_slots(config_set["id"], [slot])
+    config_set["slot_order"] = [slot["id"]]
+    storage.write_config_set_meta(config_set["id"], config_set)
+    return config_set, slot
+
+
+def _setup_image_config_set(storage, config, *, task_type="image_generation", model="gpt-image-1"):
+    provider = config.add_provider(
+        "openai",
+        "sk-image-test",
+        base_url="https://example.test/v1",
+        display_name="Image Provider",
+    )
+    config_set = contracts.make_config_set({"name": "Image Set"})
+    storage.write_config_set_meta(config_set["id"], config_set)
+    slot = contracts.make_config_slot(config_set["id"], {
+        "provider_id": provider["id"],
+        "provider_model_id": model,
+        "display_name": model,
+        "system_prompt": "Be visual.",
+        "task_type": task_type,
+        "modality": "image",
+        "extra_params": {"quality": "low"},
     })
     storage.write_config_slots(config_set["id"], [slot])
     config_set["slot_order"] = [slot["id"]]
@@ -188,8 +248,37 @@ async def test_run_engine_execute_body_normalizes_content_blocks(storage, config
 
 
 @pytest.mark.asyncio
+async def test_run_engine_preserves_multimodal_content_for_provider(storage, config):
+    provider = MockTextProvider(["ok"])
+    config_set, _ = _setup_config_set(storage, config)
+    run = contracts.make_run({"name": "Multimodal Run", "config_set_id": config_set["id"]})
+    storage.write_run_record_meta(run["id"], run)
+    artifact = storage.write_artifact_bytes(
+        run["id"],
+        b"png-data",
+        kind="input",
+        modality="image",
+        mime_type="image/png",
+    )
+    engine = RunEngine(storage, config, provider_factory=lambda _: provider)
+
+    await engine.execute_run(run["id"], inputs=[{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "Describe this"},
+            {"type": "artifact", "artifact_id": artifact["id"], "mime_type": "image/png"},
+        ],
+    }])
+
+    content = provider.calls[0]["messages"][-1]["content"]
+    assert content[0] == {"type": "text", "text": "Describe this"}
+    assert content[1]["type"] == "image_url"
+    assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+@pytest.mark.asyncio
 async def test_run_engine_unsupported_task_type_creates_failed_output(storage, config):
-    config_set, _ = _setup_config_set(storage, config, task_type="image_generation")
+    config_set, _ = _setup_config_set(storage, config, task_type="image_variation")
     run = _create_run(storage, config_set["id"])
     engine = RunEngine(storage, config, provider_factory=lambda _: MockTextProvider(["unused"]))
 
@@ -199,7 +288,87 @@ async def test_run_engine_unsupported_task_type_creates_failed_output(storage, c
     assert result["status"] == "failed"
     assert outputs[0]["status"] == "failed"
     assert outputs[0]["error"]["type"] == "UnsupportedTaskTypeError"
-    assert "image_generation" in outputs[0]["error"]["message"]
+    assert "image_variation" in outputs[0]["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_run_engine_image_generation_writes_artifact_output(storage, config):
+    provider = MockImageProvider([
+        ImageResponse(
+            images=[ImageResult(data=b"png-data", mime_type="image/png", revised_prompt="revised")],
+            content="revised",
+            usage={"output_tokens": 12},
+            duration_ms=33.0,
+            model="gpt-image-1",
+        )
+    ])
+    config_set, slot = _setup_image_config_set(storage, config, task_type="image_generation")
+    run = _create_run(storage, config_set["id"])
+    engine = RunEngine(storage, config, provider_factory=lambda _: provider)
+
+    result = await engine.execute_run(run["id"])
+
+    outputs = storage.read_run_outputs(run["id"])
+    artifacts = storage.read_artifact_meta(run["id"])
+    output_artifacts = [artifact for artifact in artifacts if artifact.get("output_id") == outputs[0]["id"]]
+    assert result["status"] == "complete"
+    assert outputs[0]["status"] == "complete"
+    assert outputs[0]["slot_id"] == slot["id"]
+    assert outputs[0]["content"] == [{
+        "type": "image",
+        "artifact_id": output_artifacts[0]["id"],
+        "mime_type": "image/png",
+        "detail": "generated",
+    }]
+    assert outputs[0]["text"] == "revised"
+    assert storage.read_artifact_bytes(output_artifacts[0]) == b"png-data"
+    assert provider.image_calls[0]["model"] == "gpt-image-1"
+    assert provider.image_calls[0]["kwargs"]["extra_params"] == {"quality": "low"}
+
+
+@pytest.mark.asyncio
+async def test_run_engine_image_edit_requires_image_input(storage, config):
+    config_set, _ = _setup_image_config_set(storage, config, task_type="image_edit")
+    run = _create_run(storage, config_set["id"])
+    engine = RunEngine(storage, config, provider_factory=lambda _: MockImageProvider())
+
+    result = await engine.execute_run(run["id"])
+
+    outputs = storage.read_run_outputs(run["id"])
+    assert result["status"] == "failed"
+    assert outputs[0]["status"] == "failed"
+    assert outputs[0]["error"]["type"] == "ValueError"
+    assert "image input" in outputs[0]["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_run_engine_image_edit_uses_artifact_input_and_records_output(storage, config):
+    provider = MockImageProvider()
+    config_set, _ = _setup_image_config_set(storage, config, task_type="image_edit")
+    run = contracts.make_run({"name": "Edit Run", "config_set_id": config_set["id"]})
+    storage.write_run_record_meta(run["id"], run)
+    artifact = storage.write_artifact_bytes(
+        run["id"],
+        b"source-image",
+        kind="input",
+        modality="image",
+        mime_type="image/png",
+    )
+    engine = RunEngine(storage, config, provider_factory=lambda _: provider)
+
+    result = await engine.execute_run(run["id"], inputs=[{
+        "content": [
+            {"type": "text", "text": "Make it brighter"},
+            {"type": "artifact", "artifact_id": artifact["id"], "mime_type": "image/png"},
+        ],
+    }])
+
+    outputs = storage.read_run_outputs(run["id"])
+    assert result["status"] == "complete"
+    assert outputs[0]["content"][0]["type"] == "image"
+    assert provider.edit_calls[0]["messages"][-1]["content"][1]["image_url"]["url"].startswith(
+        "data:image/png;base64,"
+    )
 
 
 def test_execute_route_runs_existing_queued_run(client):
@@ -228,4 +397,4 @@ def test_execute_route_runs_existing_queued_run(client):
     assert r.json()["status"] == "failed"
     outputs = client.get(f"/api/runs/{run['id']}/outputs").json()
     assert outputs[0]["slot_id"] == slot["id"]
-    assert outputs[0]["error"]["type"] == "UnsupportedTaskTypeError"
+    assert outputs[0]["error"]["type"] == "ValueError"

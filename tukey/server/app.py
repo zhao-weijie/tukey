@@ -94,6 +94,7 @@ def create_app(data_dir: str | None = None) -> FastAPI:
     config = ConfigManager(storage)
     mcp_manager = McpManager()
     state = _AppState(storage, config)
+    app.state.tukey = state
 
     _init_routes(storage, config, mcp_manager)
 

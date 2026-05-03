@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Protocol
 
-from tukey.providers.base import LLMResponse
+from tukey.providers.base import ImageResponse, LLMResponse
 from tukey.providers.openai_provider import OpenAICompatibleProvider
 
 
@@ -16,6 +16,20 @@ class TextProvider(Protocol):
         model: str,
         **kwargs: Any,
     ) -> LLMResponse: ...
+
+    async def generate_image(
+        self,
+        messages: list[dict[str, Any]],
+        model: str,
+        **kwargs: Any,
+    ) -> ImageResponse: ...
+
+    async def edit_image(
+        self,
+        messages: list[dict[str, Any]],
+        model: str,
+        **kwargs: Any,
+    ) -> ImageResponse: ...
 
 
 ProviderFactory = Callable[[dict[str, Any]], TextProvider]
@@ -36,6 +50,45 @@ def text_blocks_to_text(content: list[dict[str, Any]]) -> str:
         if block.get("type") == "text":
             parts.append(str(block.get("text", "")))
     return "\n".join(part for part in parts if part)
+
+
+def message_content_to_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "text":
+                parts.append(str(block.get("text", "")))
+        return "\n".join(part for part in parts if part)
+    return ""
+
+
+def messages_to_text(messages: list[dict[str, Any]]) -> str:
+    return "\n".join(
+        text
+        for message in messages
+        if message.get("role") != "system"
+        for text in [message_content_to_text(message.get("content"))]
+        if text
+    )
+
+
+def message_content_has_image(content: Any) -> bool:
+    if not isinstance(content, list):
+        return False
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") == "image_url":
+            return True
+    return False
+
+
+def messages_have_image(messages: list[dict[str, Any]]) -> bool:
+    return any(message_content_has_image(message.get("content")) for message in messages)
 
 
 def normalize_content_blocks(value: Any) -> list[dict[str, Any]]:
@@ -82,3 +135,55 @@ class TextCompletionExecutor:
             if slot_snapshot.get(key) is not None:
                 kwargs[key] = slot_snapshot[key]
         return await self.provider.complete(messages, model, **kwargs)
+
+
+@dataclass
+class ImageGenerationExecutor:
+    provider: TextProvider
+
+    async def execute(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        model: str,
+        slot_snapshot: dict[str, Any],
+    ) -> ImageResponse:
+        if not messages_to_text(messages).strip():
+            raise ValueError("image_generation requires at least one text input block")
+
+        kwargs = self._image_kwargs(slot_snapshot)
+        response = await self.provider.generate_image(messages, model, **kwargs)
+        if not response.images:
+            raise ValueError("image_generation provider returned no images")
+        return response
+
+    @staticmethod
+    def _image_kwargs(slot_snapshot: dict[str, Any]) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {}
+        for key in ("temperature", "max_tokens", "top_p", "extra_params"):
+            if slot_snapshot.get(key) is not None:
+                kwargs[key] = slot_snapshot[key]
+        return kwargs
+
+
+@dataclass
+class ImageEditExecutor:
+    provider: TextProvider
+
+    async def execute(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        model: str,
+        slot_snapshot: dict[str, Any],
+    ) -> ImageResponse:
+        if not messages_to_text(messages).strip():
+            raise ValueError("image_edit requires at least one text instruction block")
+        if not messages_have_image(messages):
+            raise ValueError("image_edit requires at least one image input block")
+
+        kwargs = ImageGenerationExecutor._image_kwargs(slot_snapshot)
+        response = await self.provider.edit_image(messages, model, **kwargs)
+        if not response.images:
+            raise ValueError("image_edit provider returned no images")
+        return response

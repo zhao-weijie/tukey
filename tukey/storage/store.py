@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import shutil
+import hashlib
+import re
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +14,13 @@ from tukey.core import contracts
 
 DEFAULT_DATA_DIR = Path.home() / ".tukey"
 GLOBAL_CONFIG_PATH = Path.home() / ".tukey" / "tukey-global.json"
+
+MIME_EXTENSIONS = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+}
 
 
 def read_global_config() -> dict:
@@ -255,6 +264,86 @@ class Storage:
 
     def read_artifact_meta(self, run_id: str) -> list[dict[str, Any]]:
         return self.read_jsonl(self.run_record_dir(run_id) / "artifacts.jsonl")
+
+    def find_artifact_meta(self, artifact_id: str) -> dict[str, Any] | None:
+        for run_id in self.list_run_records():
+            for artifact in self.read_artifact_meta(run_id):
+                if artifact.get("id") == artifact_id:
+                    return artifact
+        return None
+
+    def artifact_file_path(self, run_id: str, filename: str) -> Path:
+        path = self.artifact_dir(run_id) / filename
+        base = self.artifact_dir(run_id).resolve()
+        resolved = path.resolve()
+        if base != resolved and base not in resolved.parents:
+            raise ValueError("Artifact path escapes run artifact directory")
+        return resolved
+
+    def safe_artifact_filename(
+        self,
+        artifact_id: str,
+        *,
+        mime_type: str,
+        filename: str | None = None,
+    ) -> str:
+        ext = MIME_EXTENSIONS.get(mime_type, ".bin")
+        if filename:
+            raw = Path(filename)
+            if raw.is_absolute() or raw.name != filename:
+                raise ValueError("Artifact filename must not include a path")
+            stem = re.sub(r"[^A-Za-z0-9_.-]+", "-", raw.stem).strip(".-") or artifact_id
+            suffix = raw.suffix or ext
+            if suffix.lower() not in set(MIME_EXTENSIONS.values()) | {".bin"}:
+                suffix = ext
+            return f"{stem}{suffix}"
+        return f"{artifact_id}{ext}"
+
+    def write_artifact_bytes(
+        self,
+        run_id: str,
+        data: bytes,
+        *,
+        kind: str,
+        modality: str,
+        mime_type: str,
+        output_id: str | None = None,
+        filename: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        artifact_id = contracts.new_id()
+        safe_name = self.safe_artifact_filename(
+            artifact_id,
+            mime_type=mime_type,
+            filename=filename,
+        )
+        path = self.artifact_file_path(run_id, safe_name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        digest = hashlib.sha256(data).hexdigest()
+        rel_path = path.relative_to(self.data_dir.resolve()).as_posix()
+        record = contracts.make_artifact({
+            "id": artifact_id,
+            "run_id": run_id,
+            "output_id": output_id,
+            "kind": kind,
+            "modality": modality,
+            "mime_type": mime_type,
+            "filename": safe_name,
+            "path": rel_path,
+            "size_bytes": len(data),
+            "sha256": digest,
+            "metadata": metadata or {},
+        })
+        self.append_artifact_meta(run_id, record)
+        return record
+
+    def read_artifact_bytes(self, artifact: dict[str, Any]) -> bytes:
+        run_id = artifact.get("run_id")
+        filename = artifact.get("filename")
+        if not run_id or not filename:
+            raise ValueError("Artifact record is missing run_id or filename")
+        return self.artifact_file_path(run_id, filename).read_bytes()
 
     # --- Run chains ---
 
