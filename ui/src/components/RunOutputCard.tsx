@@ -26,7 +26,9 @@ function formatUsage(output: RunOutput): string {
 export function RunOutputCard({ output, slot, annotations, onChanged }: Props) {
   const [comment, setComment] = useState("");
   const [annotating, setAnnotating] = useState(false);
-  const text = output.text || contentText(output.content);
+  const textBlocks = output.content.filter((block) => block.type === "text");
+  const text = output.text || contentText(textBlocks);
+  const imageBlocks = output.content.filter((block) => block.type === "image" && block.artifact_id);
   const usage = formatUsage(output);
   const failed = output.status === "failed";
 
@@ -43,7 +45,8 @@ export function RunOutputCard({ output, slot, annotations, onChanged }: Props) {
   }
 
   async function copy() {
-    await navigator.clipboard.writeText(text);
+    const imageUrls = imageBlocks.map((block) => apiClient.artifactContentUrl(block.artifact_id!));
+    await navigator.clipboard.writeText(text || imageUrls.join("\n"));
   }
 
   return (
@@ -64,12 +67,35 @@ export function RunOutputCard({ output, slot, annotations, onChanged }: Props) {
           <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
             {output.error?.message || "Run output failed"}
           </div>
-        ) : text ? (
-          <MarkdownContent content={text} />
-        ) : output.content.some((block) => block.type === "image") ? (
-          <div className="text-sm text-muted-foreground">Image artifact output recorded</div>
         ) : (
-          <div className="text-sm text-muted-foreground">No output content</div>
+          <>
+            {text && <MarkdownContent content={text} />}
+            {imageBlocks.length > 0 && (
+              <div className={`grid gap-3 ${text ? "mt-3" : ""}`}>
+                {imageBlocks.map((block, index) => {
+                  const src = apiClient.artifactContentUrl(block.artifact_id!);
+                  return (
+                    <figure key={`${block.artifact_id}-${index}`} className="overflow-hidden rounded-md border border-border bg-muted/20">
+                      <a href={src} target="_blank" rel="noreferrer" title="Open artifact image">
+                        <img
+                          src={src}
+                          alt={block.filename || `Generated image ${index + 1}`}
+                          className="max-h-[420px] w-full object-contain"
+                          loading="lazy"
+                        />
+                      </a>
+                      <figcaption className="truncate border-t border-border px-2 py-1 text-[11px] text-muted-foreground">
+                        {block.filename || block.mime_type || block.artifact_id}
+                      </figcaption>
+                    </figure>
+                  );
+                })}
+              </div>
+            )}
+            {!text && imageBlocks.length === 0 && (
+              <div className="text-sm text-muted-foreground">No output content</div>
+            )}
+          </>
         )}
       </div>
       <div className="shrink-0 border-t border-border px-2 py-2">

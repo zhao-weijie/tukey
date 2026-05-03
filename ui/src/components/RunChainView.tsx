@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, Play, RefreshCw, Settings } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown, Image as ImageIcon, Play, RefreshCw, Settings, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -8,11 +9,27 @@ import { ResponseCarousel } from "@/components/ResponseCarousel";
 import { ConfigSetEditor } from "@/components/ConfigSetEditor";
 import { RunOutputCard } from "@/components/RunOutputCard";
 import { apiClient } from "@/lib/api";
-import { contentText, useTukeyStore, type ConfigSet, type ConfigSlot, type Run } from "@/stores/tukeyStore";
+import { contentText, useTukeyStore, type ConfigSet, type ConfigSlot, type ContentBlock, type Run } from "@/stores/tukeyStore";
 
 interface Props {
   demoPrompt?: string | null;
   onDemoPromptUsed?: () => void;
+}
+
+interface ImageAttachment {
+  id: string;
+  url: string;
+  mime_type: string;
+  filename: string;
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Failed to read image file"));
+    reader.readAsDataURL(file);
+  });
 }
 
 export function RunChainView({ demoPrompt, onDemoPromptUsed }: Props) {
@@ -21,6 +38,9 @@ export function RunChainView({ demoPrompt, onDemoPromptUsed }: Props) {
   const [completionCount, setCompletionCount] = useState(1);
   const [running, setRunning] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
+  const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
+  const [inputError, setInputError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (demoPrompt) {
@@ -37,6 +57,15 @@ export function RunChainView({ demoPrompt, onDemoPromptUsed }: Props) {
       || null;
   }, [activeDetail, chain?.default_config_set_id]);
   const slots = configSet ? activeDetail?.config_slots[configSet.id] || [] : [];
+  const enabledSlots = slots.filter((slot) => slot.enabled !== false);
+  const taskTypes = Array.from(new Set(enabledSlots.map((slot) => slot.task_type || "chat_completion")));
+  const hasImageEdit = taskTypes.includes("image_edit");
+  const hasImageGeneration = taskTypes.includes("image_generation");
+  const placeholder = hasImageEdit
+    ? "Describe the image edit to run across this config set..."
+    : hasImageGeneration
+      ? "Describe the image to generate across this config set..."
+      : "Run a prompt across this config set...";
 
   const runs = useMemo(() => {
     if (!activeDetail) return [];
@@ -48,10 +77,44 @@ export function RunChainView({ demoPrompt, onDemoPromptUsed }: Props) {
     await loadChainDetail();
   }
 
+  async function addAttachments(files: FileList | null) {
+    if (!files?.length) return;
+    const imageFiles = Array.from(files).filter((file) => file.type.startsWith("image/"));
+    const warning = imageFiles.length !== files.length
+      ? "Only image files can be attached for image edit runs."
+      : null;
+    const loaded = await Promise.all(
+      imageFiles.map(async (file) => ({
+        id: globalThis.crypto?.randomUUID?.() || `${file.name}-${file.lastModified}-${Math.random()}`,
+        url: await readFileAsDataUrl(file),
+        mime_type: file.type || "image/png",
+        filename: file.name,
+      })),
+    );
+    if (loaded.length) {
+      setAttachments((current) => [...current, ...loaded]);
+    }
+    setInputError(warning);
+  }
+
   async function send() {
     const text = input.trim();
     if (!text || !chain || !configSet || running) return;
+    if (hasImageEdit && attachments.length === 0) {
+      setInputError("Attach at least one image before running an image edit slot.");
+      return;
+    }
+    const content: ContentBlock[] = [
+      { type: "text", text },
+      ...attachments.map((attachment) => ({
+        type: "image",
+        url: attachment.url,
+        mime_type: attachment.mime_type,
+        filename: attachment.filename,
+      })),
+    ];
     setInput("");
+    setInputError(null);
     setRunning(true);
     try {
       const parent = runs[runs.length - 1];
@@ -77,8 +140,9 @@ export function RunChainView({ demoPrompt, onDemoPromptUsed }: Props) {
       await apiClient.executeRun(run.id, {
         n: completionCount,
         created_by: "user",
-        inputs: [{ role: "user", content: [{ type: "text", text }] }],
+        inputs: [{ role: "user", content }],
       });
+      setAttachments([]);
       await loadChainDetail(chain.id);
       await loadWorkspace();
     } finally {
@@ -144,18 +208,52 @@ export function RunChainView({ demoPrompt, onDemoPromptUsed }: Props) {
       )}
 
       <Separator />
-      <div className="shrink-0 p-3">
+      <div className="shrink-0 space-y-2 p-3">
+        {(taskTypes.length > 0 || inputError) && (
+          <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
+            {taskTypes.map((taskType) => (
+              <Badge key={taskType} variant={taskType === "image_edit" || taskType === "image_generation" ? "secondary" : "outline"}>
+                {taskType.replace("_", " ")}
+              </Badge>
+            ))}
+            {hasImageEdit && <span className="text-muted-foreground">Image edit requires an attached image.</span>}
+            {inputError && <span className="text-destructive">{inputError}</span>}
+          </div>
+        )}
+
+        {attachments.length > 0 && (
+          <div className="flex min-w-0 flex-wrap gap-2">
+            {attachments.map((attachment) => (
+              <div key={attachment.id} className="group relative h-16 w-16 overflow-hidden rounded-md border border-border bg-muted">
+                <img src={attachment.url} alt={attachment.filename} className="h-full w-full object-cover" />
+                <Button
+                  size="icon-xs"
+                  variant="destructive"
+                  className="absolute right-1 top-1 opacity-90"
+                  onClick={() => setAttachments((current) => current.filter((item) => item.id !== attachment.id))}
+                  title={`Remove ${attachment.filename}`}
+                >
+                  <X size={12} />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="flex min-w-0 items-end gap-2">
           <Textarea
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              if (inputError) setInputError(null);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 send();
               }
             }}
-            placeholder="Run a prompt across this config set..."
+            placeholder={placeholder}
             rows={2}
             className="resize-none text-sm"
           />
@@ -169,7 +267,35 @@ export function RunChainView({ demoPrompt, onDemoPromptUsed }: Props) {
               title="Completions per slot"
               className="h-8 w-16 text-center text-xs"
             />
-            <Button onClick={send} disabled={running || !input.trim() || !configSet} className="h-9 gap-1.5">
+            {hasImageEdit && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    void addAttachments(e.currentTarget.files);
+                    e.currentTarget.value = "";
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={running}
+                  className="h-8 gap-1.5"
+                >
+                  <ImageIcon size={14} /> Image
+                </Button>
+              </>
+            )}
+            <Button
+              onClick={send}
+              disabled={running || !input.trim() || !configSet || (hasImageEdit && attachments.length === 0)}
+              className="h-9 gap-1.5"
+            >
               <Play size={14} /> {running ? "Running" : "Run"}
             </Button>
           </div>
